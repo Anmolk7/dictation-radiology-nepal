@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import useAudioRecorder from './hooks/useAudioRecorder';
 import useWhisper from './hooks/useWhisper';
 import RecordingPanel from './components/RecordingPanel';
@@ -8,6 +8,7 @@ import './App.css';
 function App() {
   const [patientId, setPatientId] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
+  const [isElectronReady, setIsElectronReady] = useState(false);
 
   const {
     isRecording,
@@ -24,8 +25,22 @@ function App() {
   const { isTranscribing, transcript, error: transcriptError, transcribeAudio } =
     useWhisper();
 
+  // Check if Electron API is available
+  useEffect(() => {
+    if (window.electron && window.electron.transcribeAudio) {
+      setIsElectronReady(true);
+      console.log('✓ Electron IPC bridge ready');
+    } else {
+      console.warn('⚠ Electron IPC bridge not available - are you running in Electron?');
+    }
+  }, []);
+
   const handleSaveAndTranscribe = useCallback(async () => {
     try {
+      if (!window.electron) {
+        throw new Error('Electron API not available. Make sure you are running in Electron.');
+      }
+
       setSavedMessage('');
 
       // Transcribe audio
@@ -50,6 +65,12 @@ function App() {
   return (
     <div className="app">
       <div className="container">
+        {!isElectronReady && (
+          <div className="warning">
+            ⚠ Running in browser mode. For full functionality, please run with: <code>npm run dev</code>
+          </div>
+        )}
+
         <RecordingPanel
           isRecording={isRecording}
           isPaused={isPaused}

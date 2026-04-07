@@ -7,6 +7,12 @@ const useWhisper = () => {
 
   const transcribeAudio = useCallback(async (audioBlob) => {
     try {
+      if (!window.electron || !window.electron.transcribeAudio) {
+        throw new Error(
+          'Electron API not available. Make sure you are running the app with: npm run dev'
+        );
+      }
+
       setError(null);
       setIsTranscribing(true);
 
@@ -14,13 +20,18 @@ const useWhisper = () => {
       const arrayBuffer = await audioBlob.arrayBuffer();
       const uint8Array = new Uint8Array(arrayBuffer);
 
+      console.log('Transcribing audio buffer of size:', uint8Array.length);
+
       // Call Electron IPC to transcribe
       const result = await window.electron.transcribeAudio(uint8Array);
+
+      console.log('Transcription result:', result);
 
       setTranscript(result);
       return result;
     } catch (err) {
       const errorMsg = `Transcription failed: ${err.message}`;
+      console.error(errorMsg, err);
       setError(errorMsg);
       throw err;
     } finally {
