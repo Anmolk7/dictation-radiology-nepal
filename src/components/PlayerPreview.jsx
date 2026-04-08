@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from "react";
 
 const PlayerPreview = ({ audioBlob }) => {
   const audioRef = useRef(null);
@@ -20,7 +20,7 @@ const PlayerPreview = ({ audioBlob }) => {
       <audio
         ref={audioRef}
         controls
-        style={{ width: '100%', marginBottom: '20px' }}
+        style={{ width: "100%", marginBottom: "20px" }}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from "react";
 
 const useAudioRecorder = () => {
   const mediaRecorderRef = useRef(null);
@@ -15,26 +15,21 @@ const useAudioRecorder = () => {
 
   const timerIntervalRef = useRef(null);
 
-  // Callback for when a chunk is ready
-  const onChunkReady = useCallback((blob) => {
-    // This will be called every 2 seconds with accumulated audio
-    // The parent component can listen for this
-  }, []);
-
   const startRecording = useCallback(async () => {
     try {
       setError(null);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      audioContextRef.current = new (window.AudioContext ||
-        window.webkitAudioContext)();
+      audioContextRef.current = new (
+        window.AudioContext || window.webkitAudioContext
+      )();
       analyserRef.current = audioContextRef.current.createAnalyser();
 
       const source = audioContextRef.current.createMediaStreamSource(stream);
       source.connect(analyserRef.current);
 
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus',
+        mimeType: "audio/webm;codecs=opus",
       });
 
       audioChunksRef.current = [];
@@ -46,15 +41,18 @@ const useAudioRecorder = () => {
           // Emit the accumulated audio whenever we get data
           if (audioChunksRef.current.length > 0) {
             const blob = new Blob([...audioChunksRef.current], {
-              type: 'audio/webm;codecs=opus',
+              type: "audio/webm;codecs=opus",
             });
 
-            console.log('[Audio] ✓ Emitting accumulated audio blob, size:', blob.size);
+            console.log(
+              "[Audio] ✓ Emitting accumulated audio blob, size:",
+              blob.size,
+            );
 
             window.dispatchEvent(
-              new CustomEvent('audio-chunk-ready', {
+              new CustomEvent("audio-chunk-ready", {
                 detail: { blob, isRecording: true },
-              })
+              }),
             );
           }
         }
@@ -68,13 +66,16 @@ const useAudioRecorder = () => {
           setRecordingTime((prev) => prev + 1);
         }, 1000);
 
-        // Every 500ms, request data from MediaRecorder
+        // Every 2 seconds, request data from MediaRecorder for streaming transcription
         chunkTimerRef.current = setInterval(() => {
-          if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-            console.log('[Audio] 🎤 Requesting data at', recordingTime, 'seconds');
+          if (
+            mediaRecorderRef.current &&
+            mediaRecorderRef.current.state === "recording"
+          ) {
+            console.log("[Audio] 🎤 Requesting data for transcription chunk");
             mediaRecorderRef.current.requestData();
           }
-        }, 500); // Every 500ms
+        }, 2000); // Every 2 seconds instead of 500ms
       };
 
       mediaRecorderRef.current = mediaRecorder;
@@ -91,20 +92,20 @@ const useAudioRecorder = () => {
           // Emit final chunk if there's any remaining audio
           if (audioChunksRef.current.length > 0) {
             const blob = new Blob(audioChunksRef.current, {
-              type: 'audio/webm;codecs=opus',
+              type: "audio/webm;codecs=opus",
             });
 
             window.dispatchEvent(
-              new CustomEvent('audio-chunk-ready', {
+              new CustomEvent("audio-chunk-ready", {
                 detail: { blob, isRecording: false }, // isRecording = false signals final chunk
-              })
+              }),
             );
 
-            console.log('[Audio] Emitting final chunk of size:', blob.size);
+            console.log("[Audio] Emitting final chunk of size:", blob.size);
           }
 
           const blob = new Blob(audioChunksRef.current, {
-            type: 'audio/webm;codecs=opus',
+            type: "audio/webm;codecs=opus",
           });
           setAudioBlob(blob);
           setIsRecording(false);
@@ -124,11 +125,14 @@ const useAudioRecorder = () => {
           stream.getTracks().forEach((track) => track.stop());
 
           // Close audio context
-          if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+          if (
+            audioContextRef.current &&
+            audioContextRef.current.state !== "closed"
+          ) {
             try {
               audioContextRef.current.close();
             } catch (err) {
-              console.warn('Could not close AudioContext:', err.message);
+              console.warn("Could not close AudioContext:", err.message);
             }
           }
 
@@ -164,8 +168,11 @@ const useAudioRecorder = () => {
 
       // Every 500ms request data
       chunkTimerRef.current = setInterval(() => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-          console.log('[Audio] 🎤 Requesting data on resume');
+        if (
+          mediaRecorderRef.current &&
+          mediaRecorderRef.current.state === "recording"
+        ) {
+          console.log("[Audio] 🎤 Requesting data on resume");
           mediaRecorderRef.current.requestData();
         }
       }, 500);
@@ -182,11 +189,11 @@ const useAudioRecorder = () => {
       }
       if (audioContextRef.current) {
         try {
-          if (audioContextRef.current.state !== 'closed') {
+          if (audioContextRef.current.state !== "closed") {
             audioContextRef.current.close();
           }
         } catch (err) {
-          console.warn('Could not close AudioContext:', err.message);
+          console.warn("Could not close AudioContext:", err.message);
         }
       }
     };

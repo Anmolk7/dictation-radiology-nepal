@@ -1,5 +1,5 @@
-import React from 'react';
-import Timer from './Timer';
+import React from "react";
+import Timer from "./Timer";
 
 const RecordingPanel = ({
   isRecording,
@@ -67,11 +67,9 @@ const RecordingPanel = ({
           onClick={onSaveAndTranscribe}
           disabled={isTranscribing}
         >
-          {isTranscribing ? 'Transcribing...' : 'Save & Transcribe'}
+          {isTranscribing ? "Transcribing..." : "Save & Transcribe"}
         </button>
       )}
-
-      {isTranscribing && <p className="status">Transcribing audio...</p>}
     </div>
   );
 };

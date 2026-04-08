@@ -11,7 +11,7 @@ An Electron desktop application for radiology residents to record voice dictatio
 ✅ **Automatic Transcription**: Convert speech to text using Whisper  
 ✅ **Patient-based Organization**: Save dictations with patient ID and timestamp  
 ✅ **Local Processing**: Completely offline transcription using bundled Whisper  
-✅ **Simple UI**: Clean, intuitive interface for quick dictations  
+✅ **Simple UI**: Clean, intuitive interface for quick dictations
 
 ## Project Structure
 
@@ -47,11 +47,13 @@ dictation-radiology-nepal/
 ## Installation & Setup
 
 ### 1. Install Dependencies
+
 ```bash
 npm install --legacy-peer-deps
 ```
 
 ### 2. Install Whisper
+
 ```bash
 pip install openai-whisper
 ```
@@ -67,6 +69,7 @@ npm run dev
 ```
 
 This will:
+
 1. Start the React development server on `http://localhost:3000`
 2. Open the Electron app window
 3. Enable hot-reload for code changes
@@ -85,15 +88,18 @@ Dictations are saved to `~/<User>/AppData/Roaming/Dictation Tool/dictations/` (W
 ## Building for Distribution
 
 ### Build executables:
+
 ```bash
 npm run build
 ```
 
 This creates:
+
 - **Windows**: `.exe` and `.msi` installers in `dist/`
 - **macOS**: `.dmg` and `.app` files in `dist/`
 
 ### On macOS to build for Windows:
+
 You'll need to use a CI/CD service or a Windows machine. Consider GitHub Actions or similar.
 
 ## Future Enhancements
@@ -110,17 +116,21 @@ You'll need to use a CI/CD service or a Windows machine. Consider GitHub Actions
 ## Troubleshooting
 
 ### "Whisper not found"
+
 Make sure Whisper is installed: `pip install openai-whisper`
 
 ### Microphone permission denied
+
 Grant microphone permissions when prompted by your OS
 
 ### App won't start
+
 1. Check that you're in the project directory
 2. Run `npm install --legacy-peer-deps` again
 3. Make sure Node.js version is 14+
 
 ### Transcription is slow
+
 - First run downloads the model (~3GB) - this is normal
 - Consider upgrading to GPU (requires CUDA setup for faster processing)
 - Whisper queue might be processing - allow more time
@@ -136,6 +146,7 @@ Grant microphone permissions when prompted by your OS
 ## File Saving
 
 Dictations are saved with:
+
 - **Location**: User's app data directory
 - **Filename format**: `{PatientID}_{Timestamp}.txt`
 - **Format**: Plain UTF-8 text
