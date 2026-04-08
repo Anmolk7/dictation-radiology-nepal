@@ -10,6 +10,11 @@ try {
       console.log('Calling save-dictation IPC with data:', data);
       return ipcRenderer.invoke('save-dictation', data);
     },
+    onTranscriptionUpdate: (callback) => {
+      ipcRenderer.on('transcription-update', (event, data) => {
+        callback(data);
+      });
+    },
   });
   console.log('Electron IPC bridge loaded successfully');
 } catch (error) {

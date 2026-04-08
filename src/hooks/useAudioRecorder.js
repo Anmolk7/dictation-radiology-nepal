@@ -5,6 +5,7 @@ const useAudioRecorder = () => {
   const audioChunksRef = useRef([]);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
+  const chunkTimerRef = useRef(null);
 
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -13,6 +14,12 @@ const useAudioRecorder = () => {
   const [error, setError] = useState(null);
 
   const timerIntervalRef = useRef(null);
+
+  // Callback for when a chunk is ready
+  const onChunkReady = useCallback((blob) => {
+    // This will be called every 2 seconds with accumulated audio
+    // The parent component can listen for this
+  }, []);
 
   const startRecording = useCallback(async () => {
     try {
@@ -33,7 +40,24 @@ const useAudioRecorder = () => {
       audioChunksRef.current = [];
 
       mediaRecorder.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data);
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+
+          // Emit the accumulated audio whenever we get data
+          if (audioChunksRef.current.length > 0) {
+            const blob = new Blob([...audioChunksRef.current], {
+              type: 'audio/webm;codecs=opus',
+            });
+
+            console.log('[Audio] ✓ Emitting accumulated audio blob, size:', blob.size);
+
+            window.dispatchEvent(
+              new CustomEvent('audio-chunk-ready', {
+                detail: { blob, isRecording: true },
+              })
+            );
+          }
+        }
       };
 
       mediaRecorder.onstart = () => {
@@ -43,6 +67,14 @@ const useAudioRecorder = () => {
         timerIntervalRef.current = setInterval(() => {
           setRecordingTime((prev) => prev + 1);
         }, 1000);
+
+        // Every 500ms, request data from MediaRecorder
+        chunkTimerRef.current = setInterval(() => {
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            console.log('[Audio] 🎤 Requesting data at', recordingTime, 'seconds');
+            mediaRecorderRef.current.requestData();
+          }
+        }, 500); // Every 500ms
       };
 
       mediaRecorderRef.current = mediaRecorder;
@@ -56,6 +88,21 @@ const useAudioRecorder = () => {
     return new Promise((resolve) => {
       if (mediaRecorderRef.current && isRecording) {
         mediaRecorderRef.current.onstop = () => {
+          // Emit final chunk if there's any remaining audio
+          if (audioChunksRef.current.length > 0) {
+            const blob = new Blob(audioChunksRef.current, {
+              type: 'audio/webm;codecs=opus',
+            });
+
+            window.dispatchEvent(
+              new CustomEvent('audio-chunk-ready', {
+                detail: { blob, isRecording: false }, // isRecording = false signals final chunk
+              })
+            );
+
+            console.log('[Audio] Emitting final chunk of size:', blob.size);
+          }
+
           const blob = new Blob(audioChunksRef.current, {
             type: 'audio/webm;codecs=opus',
           });
@@ -68,9 +115,22 @@ const useAudioRecorder = () => {
             clearInterval(timerIntervalRef.current);
           }
 
+          if (chunkTimerRef.current) {
+            clearInterval(chunkTimerRef.current);
+          }
+
           // Stop all tracks
           const stream = mediaRecorderRef.current.stream;
           stream.getTracks().forEach((track) => track.stop());
+
+          // Close audio context
+          if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+            try {
+              audioContextRef.current.close();
+            } catch (err) {
+              console.warn('Could not close AudioContext:', err.message);
+            }
+          }
 
           resolve(blob);
         };
@@ -87,6 +147,9 @@ const useAudioRecorder = () => {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
       }
+      if (chunkTimerRef.current) {
+        clearInterval(chunkTimerRef.current);
+      }
     }
   }, [isRecording, isPaused]);
 
@@ -98,6 +161,14 @@ const useAudioRecorder = () => {
       timerIntervalRef.current = setInterval(() => {
         setRecordingTime((prev) => prev + 1);
       }, 1000);
+
+      // Every 500ms request data
+      chunkTimerRef.current = setInterval(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          console.log('[Audio] 🎤 Requesting data on resume');
+          mediaRecorderRef.current.requestData();
+        }
+      }, 500);
     }
   }, [isRecording, isPaused]);
 
@@ -106,8 +177,17 @@ const useAudioRecorder = () => {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
       }
+      if (chunkTimerRef.current) {
+        clearInterval(chunkTimerRef.current);
+      }
       if (audioContextRef.current) {
-        audioContextRef.current.close();
+        try {
+          if (audioContextRef.current.state !== 'closed') {
+            audioContextRef.current.close();
+          }
+        } catch (err) {
+          console.warn('Could not close AudioContext:', err.message);
+        }
       }
     };
   }, []);

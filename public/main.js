@@ -7,37 +7,6 @@ const os = require('os');
 
 let mainWindow;
 
-// Try to find whisper in common locations
-function getWhisperPath() {
-  const possiblePaths = [
-    '/usr/local/bin/whisper',
-    '/usr/bin/whisper',
-    '/opt/homebrew/bin/whisper',
-    `${os.homedir()}/Library/Python/3.9/bin/whisper`,
-    `${os.homedir()}/Library/Python/3.10/bin/whisper`,
-    `${os.homedir()}/Library/Python/3.11/bin/whisper`,
-    `${os.homedir()}/Library/Python/3.12/bin/whisper`,
-    `${os.homedir()}/.local/bin/whisper`,
-  ];
-
-  for (const whisperPath of possiblePaths) {
-    try {
-      if (fs.existsSync(whisperPath)) {
-        console.log('[Init] Found whisper at:', whisperPath);
-        return whisperPath;
-      }
-    } catch (err) {
-      // Continue searching
-    }
-  }
-
-  // If not found, try using python module
-  console.warn('[Init] Whisper binary not found in common locations, will try via python');
-  return 'whisper';
-}
-
-const WHISPER_PATH = getWhisperPath();
-
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1024,
@@ -81,71 +50,112 @@ app.on('activate', () => {
 
 // IPC Handlers
 
-// Transcribe audio using Whisper
+// Transcribe audio using faster-whisper with real-time streaming
 ipcMain.handle('transcribe-audio', async (event, audioBuffer) => {
   try {
     console.log('[IPC] transcribe-audio handler called with buffer length:', audioBuffer.length);
 
     const tempDir = os.tmpdir();
     const tempFile = path.join(tempDir, `recording_${Date.now()}.webm`);
-    const outputFile = path.join(tempDir, `recording_${Date.now()}`);
 
     // Write audio buffer to temp file
     const buffer = Buffer.isBuffer(audioBuffer) ? audioBuffer : Buffer.from(audioBuffer);
     fs.writeFileSync(tempFile, buffer);
     console.log('[IPC] Audio written to temp file:', tempFile);
 
-    // Run whisper command with language set to English
+    // Find the transcribe script path
+    let scriptPath;
+    if (isDev) {
+      // In development, script is in project root
+      scriptPath = path.join(process.cwd(), 'transcribe_realtime.py');
+    } else {
+      // In production, script is in the resources/app directory
+      scriptPath = path.join(process.resourcesPath, 'transcribe_realtime.py');
+    }
+
+    console.log('[IPC] Using transcription script at:', scriptPath);
+
+    if (!fs.existsSync(scriptPath)) {
+      throw new Error(`Transcription script not found at: ${scriptPath}`);
+    }
+
+    // Find Python 3
+    const python3Path = 'python3';
+
+    console.log('[IPC] Running real-time transcription with faster-whisper');
+
     return new Promise((resolve, reject) => {
-      console.log('[IPC] Running whisper from:', WHISPER_PATH);
-      const whisper = spawn(WHISPER_PATH, [
-        tempFile,
-        '--language',
-        'en',
-        '--output_format',
-        'txt',
-        '--output_dir',
-        tempDir,
-      ]);
+      const python = spawn(python3Path, [scriptPath, tempFile, 'en']);
 
+      let fullTranscript = '';
       let stderr = '';
-      whisper.stderr.on('data', (data) => {
-        stderr += data.toString();
-        console.log('[Whisper stderr]', data.toString());
-      });
 
-      whisper.stdout.on('data', (data) => {
-        console.log('[Whisper stdout]', data.toString());
-      });
-
-      whisper.on('close', (code) => {
+      python.stdout.on('data', (data) => {
         try {
-          console.log('[IPC] Whisper process closed with code:', code);
-          if (code === 0) {
-            const txtFile = `${outputFile}.txt`;
-            if (!fs.existsSync(txtFile)) {
-              throw new Error(`Output file not found: ${txtFile}`);
-            }
-            const transcript = fs.readFileSync(txtFile, 'utf-8');
-            console.log('[IPC] Transcript length:', transcript.length);
+          const lines = data.toString().split('\n').filter(line => line.trim());
+          for (const line of lines) {
+            const result = JSON.parse(line);
 
-            // Cleanup temp files
-            fs.unlinkSync(tempFile);
-            if (fs.existsSync(txtFile)) {
-              fs.unlinkSync(txtFile);
-            }
+            if (result.type === 'segment') {
+              console.log('[Transcription] Segment:', result.text);
+              fullTranscript = result.full_transcript;
 
-            resolve(transcript);
-          } else {
-            reject(new Error(`Whisper exited with code ${code}. stderr: ${stderr}`));
+              // Send streaming update to renderer
+              if (mainWindow && mainWindow.webContents) {
+                console.log('[IPC] Sending transcription-update event to renderer');
+                mainWindow.webContents.send('transcription-update', {
+                  type: 'segment',
+                  text: result.text,
+                  fullTranscript: result.full_transcript,
+                });
+              } else {
+                console.warn('[IPC] Main window not available for sending update');
+              }
+            } else if (result.type === 'complete') {
+              console.log('[Transcription] Complete:', result.text);
+              fullTranscript = result.text;
+
+              // Send completion signal
+              if (mainWindow && mainWindow.webContents) {
+                console.log('[IPC] Sending transcription-complete event to renderer');
+                mainWindow.webContents.send('transcription-update', {
+                  type: 'complete',
+                  text: result.text,
+                });
+              }
+            } else if (result.type === 'error') {
+              console.error('[Transcription Error]', result.error);
+              reject(new Error(result.error));
+            }
+          }
+        } catch (err) {
+          console.error('[JSON Parse Error]', err, 'Line:', line);
+        }
+      });
+
+      python.stderr.on('data', (data) => {
+        stderr += data.toString();
+        console.log('[Python stderr]', data.toString());
+      });
+
+      python.on('close', (code) => {
+        try {
+          // Cleanup temp file
+          fs.unlinkSync(tempFile);
+
+          if (code === 0 && fullTranscript) {
+            console.log('[Transcription] Process completed successfully');
+            resolve(fullTranscript);
+          } else if (code !== 0) {
+            reject(new Error(`Transcription failed with code ${code}. stderr: ${stderr}`));
           }
         } catch (err) {
           reject(err);
         }
       });
 
-      whisper.on('error', (err) => {
-        console.error('[IPC] Whisper process error:', err);
+      python.on('error', (err) => {
+        console.error('[Python Process Error]', err);
         reject(err);
       });
     });

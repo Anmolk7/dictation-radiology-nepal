@@ -9,6 +9,8 @@ function App() {
   const [patientId, setPatientId] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
   const [isElectronReady, setIsElectronReady] = useState(false);
+  const [isTranscribingChunks, setIsTranscribingChunks] = useState(false);
+  const [transcribingChunks, setTranscribingChunks] = useState('');
 
   const {
     isRecording,
@@ -35,6 +37,64 @@ function App() {
     }
   }, []);
 
+  // Listen for audio chunks and transcribe them in real-time
+  useEffect(() => {
+    let lastTranscript = '';
+
+    const handleAudioChunk = async (event) => {
+      const { blob, isRecording: stillRecording } = event.detail;
+
+      if (!window.electron) {
+        console.warn('❌ Cannot transcribe chunk - Electron API not available');
+        return;
+      }
+
+      try {
+        setIsTranscribingChunks(true);
+        console.log('🎤 Transcribing accumulated audio...');
+
+        // Convert blob to array buffer
+        const arrayBuffer = await blob.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+
+        console.log('   Buffer size:', uint8Array.length);
+
+        // Transcribe the chunk via IPC
+        const result = await window.electron.transcribeAudio(uint8Array);
+
+        console.log('✅ Transcription complete!');
+        console.log('   Full result:', result);
+
+        if (result && result.trim()) {
+          // Update the accumulated transcript
+          lastTranscript = result;
+          setTranscribingChunks(result);
+
+          console.log('📝 Updated transcript:', result);
+        } else {
+          console.log('⚠️  Transcription result was empty');
+        }
+
+        setIsTranscribingChunks(false);
+      } catch (err) {
+        if (err.message.includes('Invalid data')) {
+          console.log('⚠️  Chunk too small or incomplete, waiting for more audio...');
+        } else {
+          console.error('❌ Error transcribing:', err.message);
+        }
+        setIsTranscribingChunks(false);
+      }
+    };
+
+    console.log('🎧 Setting up audio-chunk-ready listener');
+    window.addEventListener('audio-chunk-ready', handleAudioChunk);
+
+    return () => {
+      console.log('🎧 Removing audio-chunk-ready listener');
+      window.removeEventListener('audio-chunk-ready', handleAudioChunk);
+    };
+  }, []);
+
   const handleSaveAndTranscribe = useCallback(async () => {
     try {
       if (!window.electron) {
@@ -43,24 +103,30 @@ function App() {
 
       setSavedMessage('');
 
-      // Transcribe audio
-      const transcribed = await transcribeAudio(audioBlob);
+      // Use the accumulated transcript from chunks
+      const finalTranscript = transcribingChunks || transcript || 'No transcription available';
 
       // Save to file
       const result = await window.electron.saveDictation({
         patientId,
-        transcript: transcribed,
+        transcript: finalTranscript,
       });
 
       setSavedMessage(result.message);
 
       // Reset state
       setPatientId('');
+      setTranscribingChunks('');
       setTimeout(() => setSavedMessage(''), 3000);
     } catch (err) {
       setSavedMessage(`Error: ${err.message}`);
     }
-  }, [audioBlob, patientId, transcribeAudio]);
+  }, [transcribingChunks, transcript, patientId]);
+
+  const handleStartRecording = useCallback(async () => {
+    setTranscribingChunks(''); // Clear previous transcript
+    await startRecording();
+  }, [startRecording]);
 
   return (
     <div className="app">
@@ -77,21 +143,22 @@ function App() {
           recordingTime={recordingTime}
           patientId={patientId}
           setPatientId={setPatientId}
-          onStart={startRecording}
+          onStart={handleStartRecording}
           onStop={stopRecording}
           onPause={pauseRecording}
           onResume={resumeRecording}
-          isTranscribing={isTranscribing}
+          isTranscribing={isTranscribingChunks || isTranscribing}
           onSaveAndTranscribe={handleSaveAndTranscribe}
           audioBlob={audioBlob}
         />
 
         {audioBlob && !isRecording && <PlayerPreview audioBlob={audioBlob} />}
 
-        {transcript && (
+        {(transcribingChunks || transcript) && (
           <div className="transcript">
-            <h3>Transcription:</h3>
-            <p>{transcript}</p>
+            <h3>📝 Live Transcription:</h3>
+            <p>{transcribingChunks || transcript}</p>
+            {(isTranscribingChunks || isTranscribing) && <span className="transcribing-indicator">Writing...</span>}
           </div>
         )}
 
