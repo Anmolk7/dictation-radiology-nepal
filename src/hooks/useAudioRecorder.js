@@ -5,7 +5,7 @@ const useAudioRecorder = () => {
   const audioChunksRef = useRef([]);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
-  const chunkTimerRef = useRef(null);
+  const currentSessionIdRef = useRef(null);
 
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -15,9 +15,10 @@ const useAudioRecorder = () => {
 
   const timerIntervalRef = useRef(null);
 
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (sessionId = null) => {
     try {
       setError(null);
+      currentSessionIdRef.current = sessionId;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       audioContextRef.current = new (
@@ -32,33 +33,9 @@ const useAudioRecorder = () => {
         mimeType: "audio/webm;codecs=opus",
       });
 
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-
-          // Emit the accumulated audio whenever we get data
-          if (audioChunksRef.current.length > 0) {
-            const blob = new Blob([...audioChunksRef.current], {
-              type: "audio/webm;codecs=opus",
-            });
-
-            console.log(
-              "[Audio] ✓ Emitting accumulated audio blob, size:",
-              blob.size,
-            );
-
-            window.dispatchEvent(
-              new CustomEvent("audio-chunk-ready", {
-                detail: { blob, isRecording: true },
-              }),
-            );
-          }
-        }
-      };
-
+      // Set up event handlers before starting
       mediaRecorder.onstart = () => {
+        console.log("[Audio] 🎤 MediaRecorder started");
         setIsRecording(true);
         setRecordingTime(0);
 
@@ -66,20 +43,55 @@ const useAudioRecorder = () => {
           setRecordingTime((prev) => prev + 1);
         }, 1000);
 
-        // Every 2 seconds, request data from MediaRecorder for streaming transcription
-        chunkTimerRef.current = setInterval(() => {
-          if (
-            mediaRecorderRef.current &&
-            mediaRecorderRef.current.state === "recording"
-          ) {
-            console.log("[Audio] 🎤 Requesting data for transcription chunk");
-            mediaRecorderRef.current.requestData();
-          }
-        }, 2000); // Every 2 seconds instead of 500ms
+        // No automatic data collection - user controls when to stop
+      };
+
+      mediaRecorder.onstop = () => {
+        console.log("[Audio] ⏹️ MediaRecorder stopped event fired");
+      };
+
+      mediaRecorder.onerror = (event) => {
+        console.error("[Audio] ❌ MediaRecorder error:", event);
+        setError(
+          `MediaRecorder error: ${event.error?.message || "Unknown error"}`,
+        );
+      };
+
+      mediaRecorder.onpause = () => {
+        console.log("[Audio] ⏸️ MediaRecorder paused");
+      };
+
+      mediaRecorder.onresume = () => {
+        console.log("[Audio] ▶️ MediaRecorder resumed");
+      };
+
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+          const blob = new Blob(audioChunksRef.current, {
+            type: "audio/webm;codecs=opus",
+          });
+          console.log(
+            "[Audio] ✓ Audio chunk collected, size:",
+            event.data.size,
+          );
+          window.dispatchEvent(
+            new CustomEvent("audio-chunk-ready", {
+              detail: {
+                blob,
+                isRecording: true,
+                sessionId: currentSessionIdRef.current,
+              },
+            }),
+          );
+        }
       };
 
       mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.start();
+      // Start recording with a timeslice to emit chunks during recording
+      mediaRecorder.start(2000);
     } catch (err) {
       setError(`Failed to start recording: ${err.message}`);
     }
@@ -87,26 +99,31 @@ const useAudioRecorder = () => {
 
   const stopRecording = useCallback(() => {
     return new Promise((resolve) => {
+      console.log("[Audio] 🛑 stopRecording() called");
+      console.log(
+        "[Audio] - mediaRecorderRef.current:",
+        !!mediaRecorderRef.current,
+      );
+      console.log("[Audio] - isRecording:", isRecording);
+      console.log(
+        "[Audio] - mediaRecorder.state:",
+        mediaRecorderRef.current?.state,
+      );
+
       if (mediaRecorderRef.current && isRecording) {
         mediaRecorderRef.current.onstop = () => {
-          // Emit final chunk if there's any remaining audio
-          if (audioChunksRef.current.length > 0) {
-            const blob = new Blob(audioChunksRef.current, {
-              type: "audio/webm;codecs=opus",
-            });
+          console.log("[Audio] ⏹️ onstop handler fired");
+          console.log(
+            "[Audio] - Audio chunks: ",
+            audioChunksRef.current.length,
+          );
 
-            window.dispatchEvent(
-              new CustomEvent("audio-chunk-ready", {
-                detail: { blob, isRecording: false }, // isRecording = false signals final chunk
-              }),
-            );
-
-            console.log("[Audio] Emitting final chunk of size:", blob.size);
-          }
-
+          // Create the final blob from all collected chunks
           const blob = new Blob(audioChunksRef.current, {
             type: "audio/webm;codecs=opus",
           });
+
+          console.log("[Audio] ✅ Final blob created, size:", blob.size);
           setAudioBlob(blob);
           setIsRecording(false);
           setIsPaused(false);
@@ -114,10 +131,6 @@ const useAudioRecorder = () => {
 
           if (timerIntervalRef.current) {
             clearInterval(timerIntervalRef.current);
-          }
-
-          if (chunkTimerRef.current) {
-            clearInterval(chunkTimerRef.current);
           }
 
           // Stop all tracks
@@ -136,10 +149,35 @@ const useAudioRecorder = () => {
             }
           }
 
+          // Emit a final chunk event so callers can finalize streaming logic
+          if (audioChunksRef.current.length > 0) {
+            const finalBlob = new Blob(audioChunksRef.current, {
+              type: "audio/webm;codecs=opus",
+            });
+            window.dispatchEvent(
+              new CustomEvent("audio-chunk-ready", {
+                detail: {
+                  blob: finalBlob,
+                  isRecording: false,
+                  sessionId: currentSessionIdRef.current,
+                },
+              }),
+            );
+          }
+
           resolve(blob);
+          audioChunksRef.current = [];
+          currentSessionIdRef.current = null;
+          mediaRecorderRef.current = null;
         };
 
+        // Request any remaining data from the recorder before stopping
+        if (mediaRecorderRef.current.state === "recording") {
+          mediaRecorderRef.current.requestData();
+        }
         mediaRecorderRef.current.stop();
+      } else {
+        resolve(null);
       }
     });
   }, [isRecording]);
@@ -150,9 +188,6 @@ const useAudioRecorder = () => {
       setIsPaused(true);
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
-      }
-      if (chunkTimerRef.current) {
-        clearInterval(chunkTimerRef.current);
       }
     }
   }, [isRecording, isPaused]);
@@ -165,17 +200,6 @@ const useAudioRecorder = () => {
       timerIntervalRef.current = setInterval(() => {
         setRecordingTime((prev) => prev + 1);
       }, 1000);
-
-      // Every 500ms request data
-      chunkTimerRef.current = setInterval(() => {
-        if (
-          mediaRecorderRef.current &&
-          mediaRecorderRef.current.state === "recording"
-        ) {
-          console.log("[Audio] 🎤 Requesting data on resume");
-          mediaRecorderRef.current.requestData();
-        }
-      }, 500);
     }
   }, [isRecording, isPaused]);
 
@@ -183,9 +207,6 @@ const useAudioRecorder = () => {
     return () => {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
-      }
-      if (chunkTimerRef.current) {
-        clearInterval(chunkTimerRef.current);
       }
       if (audioContextRef.current) {
         try {

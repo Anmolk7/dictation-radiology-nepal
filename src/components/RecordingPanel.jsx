@@ -1,5 +1,4 @@
 import React from "react";
-import Timer from "./Timer";
 
 const RecordingPanel = ({
   isRecording,
@@ -14,6 +13,12 @@ const RecordingPanel = ({
   isTranscribing,
   onSaveAndTranscribe,
   audioBlob,
+  templates = [],
+  selectedTemplate = null,
+  onTemplateChange = () => {},
+  onTemplateSubmit = () => {},
+  onHomeClick = () => {},
+  formError = "",
 }) => {
   return (
     <div className="recording-panel">
@@ -31,35 +36,51 @@ const RecordingPanel = ({
         />
       </div>
 
-      {isRecording && <Timer seconds={recordingTime} />}
-
-      <div className="controls">
-        {!isRecording ? (
-          <button
-            className="btn btn-primary"
-            onClick={onStart}
-            disabled={!patientId}
-          >
-            Start Recording
-          </button>
-        ) : (
-          <>
-            {!isPaused ? (
-              <button className="btn btn-warning" onClick={onPause}>
-                Pause
-              </button>
-            ) : (
-              <button className="btn btn-warning" onClick={onResume}>
-                Resume
-              </button>
-            )}
-
-            <button className="btn btn-danger" onClick={onStop}>
-              Stop Recording
-            </button>
-          </>
+      <div className="template-selector">
+        <label htmlFor="templateSelect">Dictation Template (Optional):</label>
+        <select
+          id="templateSelect"
+          value={selectedTemplate?.id || ""}
+          onChange={(e) => {
+            const selected = templates.find((t) => t.id === e.target.value);
+            onTemplateChange(selected || null);
+          }}
+          disabled={isRecording}
+          className="template-select"
+        >
+          <option value="">None (Free-form dictation)</option>
+          {templates.map((template) => (
+            <option key={template.id} value={template.id}>
+              {template.name} ({template.sections.length} sections)
+            </option>
+          ))}
+        </select>
+        {selectedTemplate && (
+          <div className="selected-template-info">
+            ✓ Using template: <strong>{selectedTemplate.name}</strong>
+          </div>
         )}
       </div>
+
+      <div className="template-actions">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={onHomeClick}
+        >
+          ← Home
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={onTemplateSubmit}
+          disabled={!patientId.trim() || !selectedTemplate}
+        >
+          Continue to Template
+        </button>
+      </div>
+
+      {formError && <div className="error">{formError}</div>}
 
       {audioBlob && !isRecording && (
         <button

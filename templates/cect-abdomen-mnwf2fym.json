@@ -1,0 +1,69 @@
+{
+  "id": "cect-abdomen-mnwf2fym",
+  "name": "CECT ABDOMEN ",
+  "description": "Serial axial sections of the abdomen were studied with non ionic contrast using the spiral mode.",
+  "sections": [
+    {
+      "id": "section-1776037570108-95mckbe8q",
+      "prompt": "Liver",
+      "description": "Liver is normal in size and attenuation.",
+      "type": "text"
+    },
+    {
+      "id": "section-1776037676892-va9vnutn2",
+      "prompt": "Vasculature",
+      "description": "Portal vein and hepatic veins are normal.\n",
+      "type": "text"
+    },
+    {
+      "id": "section-1776037696319-91ctb53iu",
+      "prompt": "Gallbladder",
+      "description": "GB is normal in distensibility/ GB is distended",
+      "type": "text"
+    },
+    {
+      "id": "section-1776037725631-v749hwbs2",
+      "prompt": "Pancreas",
+      "description": "Pancreas is normal in size. No focal lesion seen.",
+      "type": "text"
+    },
+    {
+      "id": "section-1776037739908-ijyfjkimj",
+      "prompt": "Spleen",
+      "description": "Spleen is normal in size. No focal lesion seen. No splenic collaterals noted.",
+      "type": "text"
+    },
+    {
+      "id": "section-1776037749894-us3eoohu7",
+      "prompt": "Kidneys",
+      "description": "Both the kidneys are normal in size. No hydronephrosis / SOL/calculus seen.",
+      "type": "text"
+    },
+    {
+      "id": "section-1776037766785-htmwbtyd3",
+      "prompt": "Urinary bladder",
+      "description": "UB is normal in distension/ Non distended.",
+      "type": "text"
+    },
+    {
+      "id": "section-1776037777830-zu10ejj48",
+      "prompt": "Pelvis",
+      "description": "Pelvis is normal.",
+      "type": "text"
+    },
+    {
+      "id": "section-1776037785535-sr8acxcgh",
+      "prompt": "Chest",
+      "description": "Visualized chest is clear.",
+      "type": "text"
+    },
+    {
+      "id": "section-1776037797730-rorhkte2r",
+      "prompt": "Impression",
+      "description": "NAD",
+      "type": "text"
+    }
+  ],
+  "createdAt": "2026-04-12T23:50:29.709Z",
+  "updatedAt": "2026-04-12T23:50:41.516Z"
+}
