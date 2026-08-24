@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { generatePDF } from "../utils/pdfGenerator";
 import useAudioRecorder from "../hooks/useAudioRecorder";
-import useWhisper from "../hooks/useWhisper";
+import useMedASR from "../hooks/useMedASR";
 import "./SectionRecorder.css";
 
 const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
@@ -23,7 +23,6 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
     recordingTime,
     startRecording,
     stopRecording,
-    audioBlob,
   } = useAudioRecorder();
 
   const handleStreamingUpdate = useCallback((newTranscript, sessionId) => {
@@ -61,46 +60,52 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
     }
   }, []);
 
-  const { transcribeAudio, isTranscribing } = useWhisper(
+  const { transcribeAudio } = useMedASR(
     handleStreamingUpdate,
     handleTranscriptionComplete,
   );
-
-  const streamingProcessRef = React.useRef(null);
+  const transcriptionInProgressRef = React.useRef(false);
+  const pendingAudioRef = React.useRef(null);
 
   useEffect(() => {
-    const handleAudioChunk = async (event) => {
-      const { blob, isRecording: stillRecording, sessionId } = event.detail;
+    const processLatestAudio = async () => {
+      const pending = pendingAudioRef.current;
+      if (!pending || transcriptionInProgressRef.current) return;
 
-      if (!sessionId) {
-        return;
-      }
-
+      pendingAudioRef.current = null;
+      transcriptionInProgressRef.current = true;
       try {
-        if (streamingProcessRef.current) {
-          await streamingProcessRef.current;
-        }
-        streamingProcessRef.current = transcribeAudio(
-          blob,
-          true,
-          !stillRecording,
-          sessionId,
+        await transcribeAudio(
+          pending.blob,
+          pending.sessionId,
+          pending.isFinal,
         );
-        await streamingProcessRef.current;
-        streamingProcessRef.current = null;
       } catch (err) {
-        console.error("[SectionRecorder] Streaming transcription error:", err);
-        streamingProcessRef.current = null;
+        console.error("[SectionRecorder] MedASR update failed:", err);
+      } finally {
+        transcriptionInProgressRef.current = false;
+        if (pendingAudioRef.current) processLatestAudio();
+      }
+    };
+
+    const handleAudioChunk = (event) => {
+      const { blob, isRecording: stillRecording, sessionId } = event.detail;
+      if (sessionId && sectionSessionMapRef.current[sessionId]) {
+        pendingAudioRef.current = {
+          blob,
+          sessionId,
+          isFinal: !stillRecording,
+        };
+        processLatestAudio();
       }
     };
 
     window.addEventListener("audio-chunk-ready", handleAudioChunk);
-
     return () => {
       window.removeEventListener("audio-chunk-ready", handleAudioChunk);
-      streamingProcessRef.current = null;
+      pendingAudioRef.current = null;
     };
-  }, [currentRecordingSection, transcribeAudio]);
+  }, [transcribeAudio]);
 
   const handleStartRecording = async (sectionId) => {
     try {
@@ -124,9 +129,8 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
 
       const blob = await stopRecording();
       if (!blob || blob.size === 0) {
-        console.error("No audio blob available");
+        throw new Error("No audio was captured");
       }
-      // Final chunk transcription will be handled via the audio-chunk-ready listener.
     } catch (err) {
       console.error("Error stopping recording:", err);
       setError(`Failed to stop recording: ${err.message}`);
@@ -266,9 +270,6 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
       <div className="sections-recording">
         {template.sections.map((section, index) => {
           const transcript = sectionTranscripts[section.id] || "";
-          const hasContent =
-            transcript.trim().length > 0 &&
-            transcript.trim() !== section.description?.trim();
           const isCurrentlyRecording = currentRecordingSection === section.id;
 
           if (isCurrentlyRecording) {

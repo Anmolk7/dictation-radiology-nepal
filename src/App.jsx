@@ -1,12 +1,12 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
-  BrowserRouter as Router,
+  HashRouter as Router,
   Routes,
   Route,
   useNavigate,
 } from "react-router-dom";
 import useAudioRecorder from "./hooks/useAudioRecorder";
-import useWhisper from "./hooks/useWhisper";
+import useMedASR from "./hooks/useMedASR";
 import RecordingPanel from "./components/RecordingPanel.jsx";
 import PlayerPreview from "./components/PlayerPreview.jsx";
 import TemplateBuilder from "./pages/TemplateBuilder.jsx";
@@ -56,7 +56,6 @@ function RecordingPage({
   const [savedMessage, setSavedMessage] = useState("");
   const [formError, setFormError] = useState("");
   const [isElectronReady, setIsElectronReady] = useState(false);
-  const [transcribingChunks, setTranscribingChunks] = useState("");
   const [templates, setTemplates] = useState([]);
 
   const {
@@ -71,7 +70,7 @@ function RecordingPage({
     resumeRecording,
   } = useAudioRecorder();
 
-  const handleStreamingUpdate = useCallback((newTranscript) => {
+  const handleTranscriptionUpdate = useCallback((newTranscript) => {
     setAccumulatedTranscript(newTranscript);
   }, []);
 
@@ -80,16 +79,11 @@ function RecordingPage({
     transcript,
     error: transcriptError,
     transcribeAudio,
-  } = useWhisper(
-    handleStreamingUpdate,
-    null,
-    workflowState !== "section-recording",
-  );
+  } = useMedASR(handleTranscriptionUpdate);
 
-  const [isStreamingTranscription, setIsStreamingTranscription] =
-    useState(false);
   const [accumulatedTranscript, setAccumulatedTranscript] = useState("");
-  const streamingTranscriptRef = useRef("");
+  const transcriptionInProgressRef = useRef(false);
+  const pendingAudioRef = useRef(null);
 
   // Check if Electron API is available
   useEffect(() => {
@@ -115,62 +109,40 @@ function RecordingPage({
     }
   };
 
-  // Listen for audio chunks and transcribe them in real-time
   useEffect(() => {
     if (workflowState === "section-recording") {
       return undefined;
     }
 
-    let currentStreamingProcess = null;
+    const processLatestAudio = async () => {
+      const blob = pendingAudioRef.current;
+      if (!blob || transcriptionInProgressRef.current) return;
 
-    const handleAudioChunk = async (event) => {
-      const { blob, isRecording: stillRecording } = event.detail;
-
-      if (!window.electron) {
-        console.warn("❌ Cannot transcribe chunk - Electron API not available");
-        return;
-      }
-
+      pendingAudioRef.current = null;
+      transcriptionInProgressRef.current = true;
       try {
-        if (!isStreamingTranscription && stillRecording) {
-          console.log("🎤 Starting streaming transcription...");
-          setIsStreamingTranscription(true);
-          streamingTranscriptRef.current = "";
-          currentStreamingProcess = transcribeAudio(blob, true);
-        } else if (isStreamingTranscription && stillRecording) {
-          console.log(
-            "🎤 Continuing streaming transcription with new chunk...",
-          );
-          if (currentStreamingProcess) {
-            await currentStreamingProcess;
-          }
-          currentStreamingProcess = transcribeAudio(blob, true);
-        } else if (!stillRecording) {
-          console.log("🎤 Finalizing streaming transcription...");
-          setIsStreamingTranscription(false);
-          if (currentStreamingProcess) {
-            await currentStreamingProcess;
-          }
-          currentStreamingProcess = null;
-        }
+        await transcribeAudio(blob);
       } catch (err) {
-        console.error("❌ Error in streaming transcription:", err.message);
-        setIsStreamingTranscription(false);
-        currentStreamingProcess = null;
+        console.error("MedASR streaming update failed:", err.message);
+      } finally {
+        transcriptionInProgressRef.current = false;
+        if (pendingAudioRef.current) {
+          processLatestAudio();
+        }
       }
     };
 
-    console.log("🎧 Setting up audio-chunk-ready listener for streaming");
+    const handleAudioChunk = (event) => {
+      pendingAudioRef.current = event.detail.blob;
+      processLatestAudio();
+    };
+
     window.addEventListener("audio-chunk-ready", handleAudioChunk);
-
     return () => {
-      console.log("🎧 Removing audio-chunk-ready listener");
       window.removeEventListener("audio-chunk-ready", handleAudioChunk);
-      if (currentStreamingProcess) {
-        currentStreamingProcess = null;
-      }
+      pendingAudioRef.current = null;
     };
-  }, [workflowState, isStreamingTranscription, transcribeAudio]);
+  }, [transcribeAudio, workflowState]);
 
   const handleSaveAndTranscribe = useCallback(async () => {
     try {
@@ -185,7 +157,6 @@ function RecordingPage({
       const finalTranscript =
         accumulatedTranscript ||
         transcript ||
-        transcribingChunks ||
         "No transcription available";
 
       if (!patientId.trim()) {
@@ -212,7 +183,6 @@ function RecordingPage({
         setSavedMessage(result.message);
         // Reset state
         setPatientId("");
-        setTranscribingChunks("");
         setAccumulatedTranscript("");
         setTimeout(() => {
           setSavedMessage("");
@@ -223,7 +193,6 @@ function RecordingPage({
       setSavedMessage(`Error: ${err.message}`);
     }
   }, [
-    transcribingChunks,
     transcript,
     patientId,
     accumulatedTranscript,
@@ -254,17 +223,13 @@ function RecordingPage({
   }, [patientId, selectedTemplate, setWorkflowData, setWorkflowState]);
 
   const handleStartRecording = useCallback(async () => {
-    setTranscribingChunks("");
     setAccumulatedTranscript("");
-    streamingTranscriptRef.current = "";
     await startRecording();
   }, [startRecording]);
 
-  const handleClearTranscript = useCallback(() => {
-    setTranscribingChunks("");
-    setAccumulatedTranscript("");
-    streamingTranscriptRef.current = "";
-  }, []);
+  const handleStopRecording = useCallback(async () => {
+    await stopRecording();
+  }, [stopRecording]);
 
   // Section Recording View
   if (workflowState === "section-recording" && selectedTemplate) {
@@ -277,7 +242,6 @@ function RecordingPage({
             setWorkflowState("recording");
             setPatientId("");
             setAccumulatedTranscript("");
-            setTranscribingChunks("");
             onTemplateChange(null);
             navigate("/");
           }}
@@ -305,10 +269,10 @@ function RecordingPage({
           patientId={patientId}
           setPatientId={setPatientId}
           onStart={handleStartRecording}
-          onStop={stopRecording}
+          onStop={handleStopRecording}
           onPause={pauseRecording}
           onResume={resumeRecording}
-          isTranscribing={isTranscribing || isStreamingTranscription}
+          isTranscribing={isTranscribing}
           onSaveAndTranscribe={handleSaveAndTranscribe}
           audioBlob={audioBlob}
           templates={templates}

@@ -6,6 +6,121 @@ const fs = require("fs");
 const os = require("os");
 
 let mainWindow;
+let medasrWorker = null;
+let medasrWorkerOutput = "";
+let medasrWorkerError = "";
+let medasrRequestId = 0;
+const medasrRequests = new Map();
+
+function getMedasrWorkerCommand() {
+  if (isDev) {
+    const scriptPath = path.join(process.cwd(), "transcribe_realtime.py");
+    if (!fs.existsSync(scriptPath)) {
+      throw new Error(`Transcription script not found at: ${scriptPath}`);
+    }
+    return {
+      command: process.env.MEDASR_PYTHON || "python3.11",
+      args: [scriptPath, "--server"],
+    };
+  }
+
+  const binaryPath = path.join(
+    process.resourcesPath,
+    "transcribe_realtime",
+    "transcribe_realtime",
+  );
+  if (!fs.existsSync(binaryPath)) {
+    throw new Error(`Transcription binary not found at: ${binaryPath}`);
+  }
+  return { command: binaryPath, args: ["--server"] };
+}
+
+function rejectPendingMedasrRequests(error) {
+  for (const { reject } of medasrRequests.values()) {
+    reject(error);
+  }
+  medasrRequests.clear();
+}
+
+function startMedasrWorker() {
+  if (medasrWorker && !medasrWorker.killed) {
+    return medasrWorker;
+  }
+
+  const { command, args } = getMedasrWorkerCommand();
+  console.log("[MedASR] Starting persistent worker:", command, args.join(" "));
+  medasrWorker = spawn(command, args);
+  medasrWorkerOutput = "";
+  medasrWorkerError = "";
+
+  medasrWorker.stdout.on("data", (data) => {
+    medasrWorkerOutput += data.toString();
+    const lines = medasrWorkerOutput.split("\n");
+    medasrWorkerOutput = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const response = JSON.parse(line);
+        const request = medasrRequests.get(response.id);
+        if (!request) continue;
+        medasrRequests.delete(response.id);
+        if (response.error) {
+          request.reject(new Error(response.error));
+        } else {
+          request.resolve(response.text);
+        }
+      } catch (error) {
+        console.error("[MedASR] Invalid worker response:", line, error);
+      }
+    }
+  });
+
+  medasrWorker.stderr.on("data", (data) => {
+    medasrWorkerError += data.toString();
+    console.log("[MedASR]", data.toString());
+  });
+
+  medasrWorker.on("error", (error) => {
+    rejectPendingMedasrRequests(error);
+    medasrWorker = null;
+  });
+  medasrWorker.on("exit", (code) => {
+    if (code !== 0) {
+      rejectPendingMedasrRequests(
+        new Error(
+          `MedASR worker stopped with code ${code}: ${medasrWorkerError.trim()}`,
+        ),
+      );
+    }
+    medasrWorker = null;
+  });
+  return medasrWorker;
+}
+
+function transcribeWithMedasr(audioBuffer) {
+  const worker = startMedasrWorker();
+  const id = ++medasrRequestId;
+  return new Promise((resolve, reject) => {
+    if (!worker.stdin || worker.exitCode !== null || worker.killed) {
+      reject(
+        new Error(
+          `MedASR worker is unavailable: ${medasrWorkerError.trim() || "restart the app and verify Python 3.11 is installed"}`,
+        ),
+      );
+      return;
+    }
+    medasrRequests.set(id, { resolve, reject });
+    worker.stdin.write(
+      `${JSON.stringify({ id, audioBase64: Buffer.from(audioBuffer).toString("base64") })}\n`,
+      (error) => {
+        if (error && medasrRequests.has(id)) {
+          medasrRequests.delete(id);
+          reject(error);
+        }
+      },
+    );
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -34,7 +149,16 @@ function createWindow() {
   });
 }
 
-app.on("ready", createWindow);
+app.on("ready", () => {
+  createWindow();
+  // Load the model before recording starts so the first transcript is not
+  // delayed by Python and MedASR initialization.
+  try {
+    startMedasrWorker();
+  } catch (error) {
+    console.error("[MedASR] Could not start background worker:", error);
+  }
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
@@ -50,7 +174,7 @@ app.on("activate", () => {
 
 // IPC Handlers
 
-// Transcribe audio using faster-whisper with real-time streaming
+// Transcribe audio through the persistent MedASR worker.
 ipcMain.handle("transcribe-audio", async (event, payload) => {
   try {
     let audioBuffer = payload;
@@ -67,10 +191,6 @@ ipcMain.handle("transcribe-audio", async (event, payload) => {
       sessionId,
     );
 
-    const tempDir = os.tmpdir();
-    const tempFile = path.join(tempDir, `recording_${Date.now()}.webm`);
-
-    // Write audio buffer to temp file
     let buffer;
     if (Buffer.isBuffer(audioBuffer)) {
       buffer = audioBuffer;
@@ -97,120 +217,7 @@ ipcMain.handle("transcribe-audio", async (event, payload) => {
         `Unsupported audioBuffer type in transcribe-audio: ${typeof audioBuffer}`,
       );
     }
-    fs.writeFileSync(tempFile, buffer);
-    console.log("[IPC] Audio written to temp file:", tempFile);
-
-    // Find the transcribe script path
-    let scriptPath;
-    if (isDev) {
-      // In development, script is in project root
-      scriptPath = path.join(process.cwd(), "transcribe_realtime.py");
-    } else {
-      // In production, script is in the resources/app directory
-      scriptPath = path.join(process.resourcesPath, "transcribe_realtime.py");
-    }
-
-    console.log("[IPC] Using transcription script at:", scriptPath);
-
-    if (!fs.existsSync(scriptPath)) {
-      throw new Error(`Transcription script not found at: ${scriptPath}`);
-    }
-
-    // Find Python 3
-    const python3Path = "python3";
-
-    console.log("[IPC] Running real-time transcription with faster-whisper");
-
-    return new Promise((resolve, reject) => {
-      const python = spawn(python3Path, [scriptPath, tempFile, "en"]);
-
-      let fullTranscript = "";
-      let stderr = "";
-
-      python.stdout.on("data", (data) => {
-        try {
-          const lines = data
-            .toString()
-            .split("\n")
-            .filter((line) => line.trim());
-          for (const line of lines) {
-            const result = JSON.parse(line);
-
-            if (result.type === "segment") {
-              console.log("[Transcription] Segment:", result.text);
-              fullTranscript = result.full_transcript;
-
-              // Send streaming update to renderer
-              if (mainWindow && mainWindow.webContents) {
-                console.log(
-                  "[IPC] Sending transcription-update event to renderer",
-                );
-                mainWindow.webContents.send("transcription-update", {
-                  type: "segment",
-                  text: result.text,
-                  fullTranscript: result.full_transcript,
-                  sessionId,
-                });
-              } else {
-                console.warn(
-                  "[IPC] Main window not available for sending update",
-                );
-              }
-            } else if (result.type === "complete") {
-              console.log("[Transcription] Complete:", result.text);
-              fullTranscript = result.text;
-
-              // Send completion signal
-              if (mainWindow && mainWindow.webContents) {
-                console.log(
-                  "[IPC] Sending transcription-complete event to renderer",
-                );
-                mainWindow.webContents.send("transcription-update", {
-                  type: "complete",
-                  text: result.text,
-                  sessionId,
-                });
-              }
-            } else if (result.type === "error") {
-              console.error("[Transcription Error]", result.error);
-              reject(new Error(result.error));
-            }
-          }
-        } catch (err) {
-          console.error("[JSON Parse Error]", err, "Line:", line);
-        }
-      });
-
-      python.stderr.on("data", (data) => {
-        stderr += data.toString();
-        console.log("[Python stderr]", data.toString());
-      });
-
-      python.on("close", (code) => {
-        try {
-          // Cleanup temp file
-          fs.unlinkSync(tempFile);
-
-          if (code === 0 && fullTranscript) {
-            console.log("[Transcription] Process completed successfully");
-            resolve(fullTranscript);
-          } else if (code !== 0) {
-            reject(
-              new Error(
-                `Transcription failed with code ${code}. stderr: ${stderr}`,
-              ),
-            );
-          }
-        } catch (err) {
-          reject(err);
-        }
-      });
-
-      python.on("error", (err) => {
-        console.error("[Python Process Error]", err);
-        reject(err);
-      });
-    });
+    return await transcribeWithMedasr(buffer);
   } catch (error) {
     console.error("[IPC] transcribe-audio error:", error);
     throw error;
@@ -219,13 +226,12 @@ ipcMain.handle("transcribe-audio", async (event, payload) => {
 
 // Utility: Get base directory for app data (templates, dictations)
 function getAppDataDir() {
-  let baseDir;
   if (isDev) {
-    baseDir = process.cwd();
+    return process.cwd();
   } else {
-    baseDir = path.dirname(app.getAppPath());
+    // ~/Library/Application Support/Dictation Tool — writable, persists across updates
+    return app.getPath("userData");
   }
-  return baseDir;
 }
 
 // Utility: Get templates directory

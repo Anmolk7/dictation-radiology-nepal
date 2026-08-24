@@ -166,19 +166,33 @@
   list-style: none;
   padding: 0;
   margin: 0;
+  display: grid;
+  gap: 8px;
 }
 
 .sections-preview li {
-  color: #666;
-  padding: 4px 0 4px 20px;
-  position: relative;
-  font-size: 14px;
+  background: #f8fafc;
+  border-left: 3px solid #667eea;
+  border-radius: 0 6px 6px 0;
+  padding: 9px 11px;
+  line-height: 1.35;
 }
 
-.sections-preview li:before {
-  content: "→";
-  position: absolute;
-  left: 0;
+.section-preview-name {
+  color: #374151;
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.section-preview-description {
+  color: #6b7280;
+  display: -webkit-box;
+  font-size: 12px;
+  margin-top: 3px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 /* Card Actions */

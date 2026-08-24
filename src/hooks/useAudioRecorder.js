@@ -90,8 +90,8 @@ const useAudioRecorder = () => {
       };
 
       mediaRecorderRef.current = mediaRecorder;
-      // Start recording with a timeslice to emit chunks during recording
-      mediaRecorder.start(2000);
+      // Emit an audio snapshot every second for lower-latency MedASR updates.
+      mediaRecorder.start(1000);
     } catch (err) {
       setError(`Failed to start recording: ${err.message}`);
     }

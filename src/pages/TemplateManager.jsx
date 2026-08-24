@@ -111,10 +111,19 @@ const TemplateManager = ({ onCreateNew, onEditTemplate, onBack }) => {
                 </div>
 
                 <div className="sections-preview">
-                  <strong>Sections:</strong>
+                  <strong>Template sections</strong>
                   <ul>
-                    {template.sections.map((section) => (
-                      <li key={section.id}>{section.name}</li>
+                    {template.sections.map((section, index) => (
+                      <li key={section.id}>
+                        <span className="section-preview-name">
+                          {index + 1}. {section.prompt || section.name || "Untitled section"}
+                        </span>
+                        {section.description?.trim() && (
+                          <span className="section-preview-description">
+                            {section.description.trim()}
+                          </span>
+                        )}
+                      </li>
                     ))}
                   </ul>
                 </div>

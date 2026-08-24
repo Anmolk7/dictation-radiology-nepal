@@ -1,6 +1,6 @@
 # Dictation Tool for Radiology Residents
 
-An Electron desktop application for radiology residents to record voice dictations and automatically transcribe them using OpenAI's Whisper API locally.
+An Electron desktop application for radiology residents to record voice dictations and automatically transcribe them locally using Google's MedASR model.
 
 ## Features
 
@@ -8,7 +8,7 @@ An Electron desktop application for radiology residents to record voice dictatio
 ✅ **Audio Recording**: Record dictations with start/stop/pause/resume controls  
 ✅ **Real-time Timer**: Display elapsed recording time  
 ✅ **Playback Preview**: Listen to your recording before saving  
-✅ **Automatic Transcription**: Convert speech to text using Whisper  
+✅ **Medical Transcription**: Convert speech to text using MedASR, trained for medical dictation  
 ✅ **Patient-based Organization**: Save dictations with patient ID and timestamp  
 ✅ **Local Processing**: Completely offline transcription using bundled Whisper  
 ✅ **Simple UI**: Clean, intuitive interface for quick dictations
@@ -41,8 +41,9 @@ dictation-radiology-nepal/
 ## Prerequisites
 
 - **Node.js 14+** (for development)
-- **Python 3.9+** (for Whisper transcription)
-- **OpenAI Whisper**: Install with `pip install openai-whisper`
+- **Python 3.10+** (Python 3.11 recommended for MedASR transcription)
+- **FFmpeg**: Install on macOS with `brew install ffmpeg`
+- **Hugging Face account**: Accept the MedASR model conditions at https://huggingface.co/google/medasr
 
 ## Installation & Setup
 
@@ -52,13 +53,32 @@ dictation-radiology-nepal/
 npm install --legacy-peer-deps
 ```
 
-### 2. Install Whisper
+### 2. Install MedASR
+
+Install Python 3.11 on macOS if `python3 --version` reports an older version:
 
 ```bash
-pip install openai-whisper
+brew install python@3.11
 ```
 
-This downloads the Whisper model (~3GB) locally. First run will take longer as it initializes the model.
+```bash
+python3.11 -m pip install --upgrade pip
+python3.11 -m pip install -r requirements-medasr.txt
+```
+
+Create a Hugging Face read token at https://huggingface.co/settings/tokens, then make it available before starting the app:
+
+```bash
+export HF_TOKEN=your_hugging_face_read_token
+```
+
+Start the application with the same supported Python interpreter:
+
+```bash
+MEDASR_PYTHON=python3.11 npm run dev
+```
+
+The first transcription downloads the gated MedASR model. Later transcriptions run locally; CPU inference can take noticeably longer than the recording.
 
 ## Development
 
@@ -115,9 +135,13 @@ You'll need to use a CI/CD service or a Windows machine. Consider GitHub Actions
 
 ## Troubleshooting
 
-### "Whisper not found"
+### "MedASR model access denied"
 
-Make sure Whisper is installed: `pip install openai-whisper`
+Accept the model conditions at https://huggingface.co/google/medasr and set a valid `HF_TOKEN` with read access.
+
+### "ffmpeg is required"
+
+Install FFmpeg on macOS: `brew install ffmpeg`
 
 ### Microphone permission denied
 
@@ -139,7 +163,7 @@ Grant microphone permissions when prompted by your OS
 
 - **Electron**: 27.x - Desktop app framework
 - **React**: 18.x - UI framework
-- **Whisper**: Local ML transcription (openai-whisper)
+- **MedASR**: Local medical speech-to-text model (Hugging Face / Google Health)
 - **Web Audio API**: Native browser audio capture
 - **Electron IPC**: Secure renderer-to-main process communication
 
@@ -155,7 +179,7 @@ Dictations are saved with:
 ## Security Notes
 
 - Dictations are saved locally on the machine
-- Whisper runs locally - no data sent to external servers
+- MedASR runs locally after its initial Hugging Face model download
 - Future S3 integration will support encryption
 - Preload script uses context isolation for security
 
