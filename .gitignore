@@ -43,6 +43,9 @@ ENV/
 
 # Python build outputs
 python-dist/
+pyinstaller-build/
+resources/medasr-model/*
+!resources/medasr-model/.gitkeep
 *.egg-info/
 *.egg
 pip-wheel-metadata/

@@ -10,7 +10,7 @@ An Electron desktop application for radiology residents to record voice dictatio
 ✅ **Playback Preview**: Listen to your recording before saving  
 ✅ **Medical Transcription**: Convert speech to text using MedASR, trained for medical dictation  
 ✅ **Patient-based Organization**: Save dictations with patient ID and timestamp  
-✅ **Local Processing**: Completely offline transcription using bundled Whisper  
+✅ **Offline Distribution**: Bundles MedASR and FFmpeg after the build machine prepares the authorized model  
 ✅ **Simple UI**: Clean, intuitive interface for quick dictations
 
 ## Project Structure
@@ -32,7 +32,7 @@ dictation-radiology-nepal/
 │   │   └── PlayerPreview.jsx     # Audio playback
 │   └── hooks/
 │       ├── useAudioRecorder.js   # Audio recording logic
-│       └── useWhisper.js         # Whisper integration
+│       └── useMedASR.js          # MedASR integration
 ├── package.json            # Dependencies and scripts
 ├── .gitignore             # Git ignore file
 └── dictations/            # Output folder for saved dictations (auto-created)
@@ -40,9 +40,8 @@ dictation-radiology-nepal/
 
 ## Prerequisites
 
-- **Node.js 14+** (for development)
+- **Node.js 20 LTS+** (for development and packaging)
 - **Python 3.10+** (Python 3.11 recommended for MedASR transcription)
-- **FFmpeg**: Install on macOS with `brew install ffmpeg`
 - **Hugging Face account**: Accept the MedASR model conditions at https://huggingface.co/google/medasr
 
 ## Installation & Setup
@@ -107,20 +106,78 @@ Dictations are saved to `~/<User>/AppData/Roaming/Dictation Tool/dictations/` (W
 
 ## Building for Distribution
 
-### Build executables:
+### Build a macOS DMG on a new Mac
+
+The build must run on the same CPU architecture as the app you plan to ship. For example, build on an Apple Silicon Mac for Apple Silicon Macs. This project currently produces an Apple Silicon (`arm64`) DMG.
+
+#### 1. Install build prerequisites
+
+Install the Xcode Command Line Tools, then install Homebrew if it is not already available:
+
+```bash
+xcode-select --install
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+Install Node.js and Python 3.11:
+
+```bash
+brew install node@20 python@3.11
+```
+
+Confirm the required interpreters are available:
+
+```bash
+node --version
+python3.11 --version
+```
+
+#### 2. Get the project and install its dependencies
+
+Copy the project to the new Mac or clone its repository, then run the following from the project directory:
+
+```bash
+npm install --legacy-peer-deps
+python3.11 -m pip install --upgrade pip
+python3.11 -m pip install -r requirements-medasr.txt
+```
+
+`requirements-medasr.txt` installs PyInstaller, which bundles the Python transcription worker used by the desktop app.
+
+#### 3. Download the authorized offline model
+
+Sign in to Hugging Face, open https://huggingface.co/google/medasr, and accept or request access using the same account that will create the token. Once access is approved, create a new read token for that account. In the same terminal, set the token and prepare the model for packaging:
+
+```bash
+export HF_TOKEN=your_hugging_face_read_token
+npm run prepare-model
+```
+
+This downloads the model into `resources/medasr-model/`. The directory is ignored by Git and can add several gigabytes to the final DMG. Do not commit or distribute a model unless its license and Hugging Face conditions permit it.
+
+#### 4. Create the DMG
 
 ```bash
 npm run build
 ```
 
-This creates:
+This command verifies the prepared model, bundles the Python worker, FFmpeg, and model files, builds the React interface, and packages the Electron application. On a successful Apple Silicon build, the installer is created at:
 
-- **Windows**: `.exe` and `.msi` installers in `dist/`
-- **macOS**: `.dmg` and `.app` files in `dist/`
+```text
+dist/Dictation Tool-<version>-arm64.dmg
+```
 
-### On macOS to build for Windows:
+The unpacked application is available in `dist/mac-arm64/` for local testing. Open the DMG and drag **Dictation Tool** to **Applications**.
 
-You'll need to use a CI/CD service or a Windows machine. Consider GitHub Actions or similar.
+#### 5. First-run and distribution notes
+
+- The DMG is unsigned. On a different Mac, macOS may show a Gatekeeper warning; Control-click the app and select **Open** for private testing. Sign and notarize the app with an Apple Developer ID before public distribution.
+- The generated DMG includes FFmpeg and the downloaded MedASR model. Recipient Macs do not need Homebrew, Python, a Hugging Face account, or a terminal token to transcribe.
+- The model is included only after the build machine runs `npm run prepare-model` with an authorized Hugging Face token. Confirm that your intended distribution complies with the model's license and conditions.
+
+### Rebuild after changing code
+
+Run `npm run build` again. The packaging script replaces the prior Python bundle automatically and writes a new DMG to `dist/`.
 
 ## Future Enhancements
 
@@ -141,7 +198,7 @@ Accept the model conditions at https://huggingface.co/google/medasr and set a va
 
 ### "ffmpeg is required"
 
-Install FFmpeg on macOS: `brew install ffmpeg`
+The distributed DMG includes FFmpeg. If this message appears, rebuild the installer using the current `npm run build` command.
 
 ### Microphone permission denied
 
@@ -157,7 +214,7 @@ Grant microphone permissions when prompted by your OS
 
 - First run downloads the model (~3GB) - this is normal
 - Consider upgrading to GPU (requires CUDA setup for faster processing)
-- Whisper queue might be processing - allow more time
+- MedASR processing might still be running - allow more time
 
 ## Technical Details
 

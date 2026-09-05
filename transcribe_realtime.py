@@ -13,6 +13,7 @@ from transformers import pipeline
 
 
 MODEL_ID = "google/medasr"
+MODEL_PATH = os.environ.get("MEDASR_MODEL_PATH") or MODEL_ID
 _transcriber = None
 
 
@@ -21,11 +22,18 @@ def get_transcriber():
     global _transcriber
     if _transcriber is None:
         device = 0 if torch.cuda.is_available() else -1
+        pipeline_options = {
+            "model": MODEL_PATH,
+            "device": device,
+        }
+        if MODEL_PATH == MODEL_ID:
+            pipeline_options["token"] = os.environ.get("HF_TOKEN") or None
+        else:
+            pipeline_options["model_kwargs"] = {"local_files_only": True}
+
         _transcriber = pipeline(
             "automatic-speech-recognition",
-            model=MODEL_ID,
-            token=os.environ.get("HF_TOKEN") or None,
-            device=device,
+            **pipeline_options,
         )
     return _transcriber
 

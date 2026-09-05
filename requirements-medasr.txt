@@ -4,4 +4,5 @@ huggingface_hub==1.8.0
 librosa==0.11.0
 soundfile==0.13.1
 torch==2.8.0
+pyinstaller>=6.0,<7
 git+https://github.com/huggingface/transformers.git@65dc261512cbdb1ee72b88ae5b222f2605aad8e5

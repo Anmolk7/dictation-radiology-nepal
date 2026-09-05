@@ -285,6 +285,24 @@ function RecordingPage({
 
         {audioBlob && !isRecording && <PlayerPreview audioBlob={audioBlob} />}
 
+        {(isRecording ||
+          isTranscribing ||
+          accumulatedTranscript ||
+          transcript) && (
+          <div className="transcript">
+            <h3>Live Transcription</h3>
+            {accumulatedTranscript || transcript ? (
+              <p>{accumulatedTranscript || transcript}</p>
+            ) : (
+              <div className="listening-indicator">
+                {isTranscribing
+                  ? "Transcribing audio…"
+                  : "Listening for dictation…"}
+              </div>
+            )}
+          </div>
+        )}
+
         {recordingError && <div className="error">{recordingError}</div>}
         {transcriptError && <div className="error">{transcriptError}</div>}
         {savedMessage && <div className="success">{savedMessage}</div>}

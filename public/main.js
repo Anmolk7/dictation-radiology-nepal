@@ -42,6 +42,34 @@ function rejectPendingMedasrRequests(error) {
   medasrRequests.clear();
 }
 
+function getMedasrWorkerEnvironment() {
+  // Production builds bundle FFmpeg and the authorized MedASR model, so a
+  // Finder-launched app does not depend on Homebrew, a terminal PATH, or a
+  // Hugging Face login on the recipient's Mac.
+  const bundledBinDirectory = isDev
+    ? null
+    : path.join(process.resourcesPath, "bin");
+  const homebrewPaths = ["/opt/homebrew/bin", "/usr/local/bin"];
+  const currentPath = process.env.PATH || "";
+  const environment = {
+    ...process.env,
+    PATH: [bundledBinDirectory, ...homebrewPaths, currentPath]
+      .filter(Boolean)
+      .join(path.delimiter),
+  };
+
+  if (!isDev) {
+    environment.MEDASR_MODEL_PATH = path.join(
+      process.resourcesPath,
+      "medasr-model",
+    );
+    environment.HF_HUB_OFFLINE = "1";
+    environment.TRANSFORMERS_OFFLINE = "1";
+  }
+
+  return environment;
+}
+
 function startMedasrWorker() {
   if (medasrWorker && !medasrWorker.killed) {
     return medasrWorker;
@@ -49,7 +77,9 @@ function startMedasrWorker() {
 
   const { command, args } = getMedasrWorkerCommand();
   console.log("[MedASR] Starting persistent worker:", command, args.join(" "));
-  medasrWorker = spawn(command, args);
+  medasrWorker = spawn(command, args, {
+    env: getMedasrWorkerEnvironment(),
+  });
   medasrWorkerOutput = "";
   medasrWorkerError = "";
 
