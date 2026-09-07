@@ -89,10 +89,14 @@
       "target": [
         "dmg"
       ],
+      "icon": "assets/rad-dictate.icns",
       "category": "public.app-category.productivity",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "This app needs microphone access to record and transcribe radiology dictations."
       }
+    },
+    "dmg": {
+      "icon": "assets/rad-dictate.icns"
     }
   }
 }
