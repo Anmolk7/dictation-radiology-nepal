@@ -21,6 +21,71 @@
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
 }
 
+.manager-header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.import-panel {
+  padding: 20px;
+  margin-bottom: 24px;
+  border: 1px solid #dbe3f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.import-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.import-panel-header h3,
+.import-panel-header p {
+  margin: 0;
+}
+
+.import-panel-header p {
+  margin-top: 6px;
+  color: #64748b;
+}
+
+.import-url-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.import-url-row input,
+.import-html-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.import-html-input {
+  display: block;
+  resize: vertical;
+  margin-bottom: 12px;
+}
+
+.import-warning {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-left: 4px solid #f59e0b;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.import-warning p {
+  margin: 0;
+}
+
 .manager-header > div {
   flex: 1;
 }
@@ -334,6 +399,10 @@
 
   .manager-header .btn {
     align-self: flex-start;
+  }
+
+  .manager-header-actions {
+    flex-wrap: wrap;
   }
 
   .templates-grid {

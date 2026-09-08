@@ -116,6 +116,26 @@ The development command will:
 
 Dictations are saved to `~/<User>/AppData/Roaming/Dictation Tool/dictations/` (Windows) or `~/Library/Application Support/Dictation Tool/dictations/` (macOS) with format: `{PatientID}_{YYYY-MM-DD_HH-MM-SS}.txt`
 
+## Importing Radiology Templates
+
+Open **Template Manager** and choose **Import HTML** to import a pre-made
+RadReport template. You can either:
+
+- Paste a RadReport page URL, such as `https://radreport.org/home/...`, and
+  choose **Fetch URL**.
+- Download the template HTML from RadReport and paste it into the HTML field,
+  then choose **Parse Pasted HTML**.
+
+RadReport page URLs are resolved through the official RadReport API because the
+website page itself is client-rendered. The imported title, top-level report
+sections, and their available field labels/options are converted into the
+application's template format. The result opens in the existing Template
+Builder so you can review and edit it before saving.
+
+Imported templates retain the source URL and a RadReport/RSNA license reminder
+in their description. Review and comply with the applicable RadReport license
+before using or redistributing imported template content.
+
 ## Building for Distribution
 
 ### Build a macOS DMG on a new Mac

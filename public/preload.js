@@ -103,6 +103,10 @@ try {
       return ipcRenderer.invoke("delete-template", templateId);
     },
 
+    fetchTemplateHTML: (url) => {
+      return ipcRenderer.invoke("fetch-template-html", url);
+    },
+
     // Dictation save as PDF
     saveDictationPDF: (data) => {
       console.log("Calling save-dictation-pdf IPC with data:", data);

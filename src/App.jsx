@@ -320,6 +320,7 @@ function RecordingPage({
 function App() {
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [editingTemplate, setEditingTemplate] = useState(null);
+  const [isImportingTemplate, setIsImportingTemplate] = useState(false);
   const [workflowState, setWorkflowState] = useState("recording");
   const [workflowData, setWorkflowData] = useState({});
   const navigate = useNavigate();
@@ -337,15 +338,24 @@ function App() {
   const handleTemplateBuilderSave = () => {
     navigate("/templates");
     setEditingTemplate(null);
+    setIsImportingTemplate(false);
   };
 
   const handleCreateNewTemplate = () => {
     setEditingTemplate(null);
+    setIsImportingTemplate(false);
     navigate("/template-builder");
   };
 
   const handleEditTemplate = (template) => {
     setEditingTemplate(template);
+    setIsImportingTemplate(false);
+    navigate("/template-builder");
+  };
+
+  const handleImportTemplate = (template) => {
+    setEditingTemplate(template);
+    setIsImportingTemplate(true);
     navigate("/template-builder");
   };
 
@@ -379,6 +389,7 @@ function App() {
           <TemplateManager
             onCreateNew={handleCreateNewTemplate}
             onEditTemplate={handleEditTemplate}
+            onImportTemplate={handleImportTemplate}
             onBack={() => navigate("/")}
           />
         }
@@ -390,6 +401,7 @@ function App() {
             onSave={handleTemplateBuilderSave}
             onCancel={() => navigate("/templates")}
             initialTemplate={editingTemplate}
+            isImport={isImportingTemplate}
           />
         }
       />

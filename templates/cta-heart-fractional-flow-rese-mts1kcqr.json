@@ -1,0 +1,39 @@
+{
+  "id": "cta-heart-fractional-flow-rese-mts1kcqr",
+  "name": "CTA Heart Fractional Flow Reserve",
+  "description": "Source: https://radreport.org/home/50866/2022-01-11%2020:31:57\nImported from RadReport.org.\nReview the RSNA RadReport license before using or redistributing imported content.",
+  "sections": [
+    {
+      "id": "section-1788833980035-74i8tjy47",
+      "prompt": "Procedure Information",
+      "description": "",
+      "type": "text"
+    },
+    {
+      "id": "section-1788833980035-yt93oe28l",
+      "prompt": "Clinical Information",
+      "description": "Chest pain stable acute",
+      "type": "text"
+    },
+    {
+      "id": "section-1788833980035-e7fvnub4l",
+      "prompt": "Comparison",
+      "description": "Coronary CTA",
+      "type": "text"
+    },
+    {
+      "id": "section-1788833980035-czr1c48eg",
+      "prompt": "Findings",
+      "description": "Left main coronary artery Likelihood of flow-limiting lesion low borderline high Fractional flow reserve CT (FFRCT) 2 cm distal to stenosis Proximal vessel in abnormal vessel Distal most vessel in normal vessel Left anterior descending artery Likelihood of flow-limiting lesion low borderline high Fractional flow reserve CT (FFRCT) 2 cm distal to stenosis Proximal vessel in abnormal vessel Distal most vessel in normal vessel Left circumflex artery Likelihood of flow-limiting lesion low borderline high Fractional flow reserve CT (FFRCT) 2 cm distal to stenosis Proximal vessel in abnormal vessel Distal most vessel in normal vessel Right coronary artery Likelihood of flow-limiting lesion low borderline high Fractional flow reserve CT (FFRCT) 2 cm distal to stenosis Proximal vessel in abnormal vessel Distal most vessel in normal vessel",
+      "type": "text"
+    },
+    {
+      "id": "section-1788833980035-mbo062kpt",
+      "prompt": "Impression",
+      "description": "",
+      "type": "text"
+    }
+  ],
+  "createdAt": "2026-09-08T02:19:40.035Z",
+  "updatedAt": "2026-09-08T02:20:00.641Z"
+}

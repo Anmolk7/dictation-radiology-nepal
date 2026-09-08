@@ -58,11 +58,14 @@ function getMedasrWorkerEnvironment() {
       .join(path.delimiter),
   };
 
-  if (!isDev) {
-    environment.MEDASR_MODEL_PATH = path.join(
-      process.resourcesPath,
-      "medasr-model",
-    );
+  const localModelDirectory = isDev
+    ? path.join(process.cwd(), "resources", "medasr-model")
+    : path.join(process.resourcesPath, "medasr-model");
+
+  // Use the offline snapshot whenever it exists so dev mode doesn't hit the
+  // Hugging Face Hub (and require HF_TOKEN/network) on every restart.
+  if (fs.existsSync(path.join(localModelDirectory, "config.json"))) {
+    environment.MEDASR_MODEL_PATH = localModelDirectory;
     environment.HF_HUB_OFFLINE = "1";
     environment.TRANSFORMERS_OFFLINE = "1";
   }
@@ -445,6 +448,76 @@ ipcMain.handle("delete-template", async (event, templateId) => {
     };
   } catch (error) {
     console.error("[IPC] delete-template error:", error);
+    throw error;
+  }
+});
+
+// Fetch HTML for a template import without exposing network APIs to the renderer.
+ipcMain.handle("fetch-template-html", async (event, url) => {
+  try {
+    const requestedUrl = new URL(url);
+    if (requestedUrl.protocol !== "https:") {
+      throw new Error("Only HTTPS template URLs are supported");
+    }
+
+    let fetchUrl = requestedUrl;
+    const radReportMatch = requestedUrl.pathname.match(/^\/home\/(\d+)\/(.+)$/);
+    if (requestedUrl.hostname === "radreport.org" && radReportMatch) {
+      const templateVersion = decodeURIComponent(radReportMatch[2]);
+      fetchUrl = new URL(
+        `https://api3.rsna.org/radreport/v1/templates/${radReportMatch[1]}/details?version=${encodeURIComponent(templateVersion)}`,
+      );
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(fetchUrl, {
+        signal: controller.signal,
+        headers: { Accept: "text/html, application/json" },
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `Template request failed with status ${response.status}`,
+        );
+      }
+
+      const contentType = response.headers.get("content-type") || "";
+      let html;
+      if (fetchUrl.hostname === "api3.rsna.org") {
+        if (!contentType.includes("json")) {
+          throw new Error("The RadReport API did not return JSON");
+        }
+        const payload = await response.json();
+        html = payload?.DATA?.templateData;
+        if (!html) {
+          throw new Error(
+            "The RadReport API response did not contain template HTML",
+          );
+        }
+      } else {
+        if (contentType && !contentType.includes("text/html")) {
+          throw new Error("The URL did not return an HTML document");
+        }
+        html = await response.text();
+      }
+
+      if (Buffer.byteLength(html, "utf8") > 5 * 1024 * 1024) {
+        throw new Error(
+          "The HTML document is larger than the 5 MB import limit",
+        );
+      }
+
+      return { html, finalUrl: requestedUrl.toString() };
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (error) {
+    console.error("[IPC] fetch-template-html error:", error);
+    if (error.name === "AbortError") {
+      throw new Error("Template request timed out after 15 seconds");
+    }
     throw error;
   }
 });

@@ -1,11 +1,23 @@
 import React, { useState, useEffect } from "react";
+import { parseHtmlTemplate } from "../utils/htmlTemplateImporter";
 import "./TemplateManager.css";
 
-const TemplateManager = ({ onCreateNew, onEditTemplate, onBack }) => {
+const TemplateManager = ({
+  onCreateNew,
+  onEditTemplate,
+  onImportTemplate,
+  onBack,
+}) => {
   const [templates, setTemplates] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importUrl, setImportUrl] = useState("");
+  const [importHtml, setImportHtml] = useState("");
+  const [importError, setImportError] = useState("");
+  const [importWarnings, setImportWarnings] = useState([]);
+  const [isImportLoading, setIsImportLoading] = useState(false);
 
   // Load templates on mount
   useEffect(() => {
@@ -52,6 +64,30 @@ const TemplateManager = ({ onCreateNew, onEditTemplate, onBack }) => {
     return new Date(isoString).toLocaleString();
   };
 
+  const handleParseImport = (html, sourceUrl = "") => {
+    try {
+      setImportError("");
+      const result = parseHtmlTemplate(html, { sourceUrl });
+      setImportWarnings(result.warnings);
+      onImportTemplate(result.template);
+    } catch (err) {
+      setImportError(err.message);
+    }
+  };
+
+  const handleFetchUrl = async () => {
+    try {
+      setIsImportLoading(true);
+      setImportError("");
+      const result = await window.electron.fetchTemplateHTML(importUrl);
+      handleParseImport(result.html, result.finalUrl || importUrl);
+    } catch (err) {
+      setImportError(`Could not fetch template: ${err.message}`);
+    } finally {
+      setIsImportLoading(false);
+    }
+  };
+
   return (
     <div className="template-manager">
       <div className="manager-container">
@@ -60,9 +96,21 @@ const TemplateManager = ({ onCreateNew, onEditTemplate, onBack }) => {
             <h2>📚 Template Manager</h2>
             <p>Manage your dictation templates</p>
           </div>
-          <button className="btn btn-primary" onClick={onCreateNew}>
-            + New Template
-          </button>
+          <div className="manager-header-actions">
+            <button className="btn btn-primary" onClick={onCreateNew}>
+              + New Template
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                setIsImporting(true);
+                setImportError("");
+                setImportWarnings([]);
+              }}
+            >
+              Import HTML
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -71,6 +119,63 @@ const TemplateManager = ({ onCreateNew, onEditTemplate, onBack }) => {
             <button className="btn btn-small" onClick={() => setError(null)}>
               Dismiss
             </button>
+          </div>
+        )}
+
+        {isImporting && (
+          <div className="import-panel">
+            <div className="import-panel-header">
+              <div>
+                <h3>Import Radiology Template</h3>
+                <p>Use a RadReport URL or paste downloaded HTML.</p>
+              </div>
+              <button
+                className="btn btn-secondary-small"
+                onClick={() => setIsImporting(false)}
+              >
+                Cancel
+              </button>
+            </div>
+
+            <div className="import-url-row">
+              <input
+                type="url"
+                value={importUrl}
+                onChange={(event) => setImportUrl(event.target.value)}
+                placeholder="https://radreport.org/home/..."
+              />
+              <button
+                className="btn btn-primary"
+                onClick={handleFetchUrl}
+                disabled={!importUrl.trim() || isImportLoading}
+              >
+                {isImportLoading ? "Fetching..." : "Fetch URL"}
+              </button>
+            </div>
+
+            <textarea
+              className="import-html-input"
+              value={importHtml}
+              onChange={(event) => setImportHtml(event.target.value)}
+              placeholder="Or paste the downloaded template HTML here..."
+              rows="6"
+            />
+            <button
+              className="btn btn-secondary"
+              onClick={() => handleParseImport(importHtml, importUrl)}
+              disabled={!importHtml.trim()}
+            >
+              Parse Pasted HTML
+            </button>
+
+            {importError && <div className="error">{importError}</div>}
+            {importWarnings.length > 0 && (
+              <div className="import-warning">
+                {importWarnings.map((warning) => (
+                  <p key={warning}>{warning}</p>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -116,7 +221,8 @@ const TemplateManager = ({ onCreateNew, onEditTemplate, onBack }) => {
                     {template.sections.map((section, index) => (
                       <li key={section.id}>
                         <span className="section-preview-name">
-                          {index + 1}. {section.prompt || section.name || "Untitled section"}
+                          {index + 1}.{" "}
+                          {section.prompt || section.name || "Untitled section"}
                         </span>
                         {section.description?.trim() && (
                           <span className="section-preview-description">

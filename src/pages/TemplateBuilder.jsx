@@ -6,7 +6,12 @@ import {
 } from "../utils/templateUtils";
 import "./TemplateBuilder.css";
 
-const TemplateBuilder = ({ onSave, onCancel, initialTemplate = null }) => {
+const TemplateBuilder = ({
+  onSave,
+  onCancel,
+  initialTemplate = null,
+  isImport = false,
+}) => {
   const [templateName, setTemplateName] = useState(initialTemplate?.name || "");
   const [templateDescription, setTemplateDescription] = useState(
     initialTemplate?.description || "",
@@ -79,7 +84,8 @@ const TemplateBuilder = ({ onSave, onCancel, initialTemplate = null }) => {
         );
       }
 
-      const ipcMethod = initialTemplate ? "updateTemplate" : "createTemplate";
+      const ipcMethod =
+        initialTemplate && !isImport ? "updateTemplate" : "createTemplate";
       const result = await window.electron[ipcMethod](template);
 
       setSuccessMessage(result.message);
