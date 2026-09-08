@@ -2,6 +2,10 @@ import React, { useState, useCallback, useEffect } from "react";
 import { generatePDF } from "../utils/pdfGenerator";
 import useAudioRecorder from "../hooks/useAudioRecorder";
 import useMedASR from "../hooks/useMedASR";
+import {
+  extractVoiceCommand,
+  removeVoiceCommand,
+} from "../utils/normalizeTranscript";
 import "./SectionRecorder.css";
 
 const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
@@ -17,16 +21,15 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
   const [successMessage, setSuccessMessage] = useState("");
   const sectionSessionMapRef = React.useRef({});
   const currentSessionRef = React.useRef(null);
+  const currentRecordingSectionRef = React.useRef(null);
+  const handledVoiceCommandSessionRef = React.useRef(null);
+  const voiceCommandHandlerRef = React.useRef(null);
 
-  const {
-    isRecording,
-    recordingTime,
-    startRecording,
-    stopRecording,
-  } = useAudioRecorder();
+  const { isRecording, recordingTime, startRecording, stopRecording } =
+    useAudioRecorder();
 
   const handleStreamingUpdate = useCallback((newTranscript, sessionId) => {
-    if (!sessionId) {
+    if (!sessionId || sessionId !== currentSessionRef.current) {
       return;
     }
 
@@ -35,10 +38,20 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
       return;
     }
 
+    const voiceCommand = extractVoiceCommand(newTranscript);
+    const transcript = voiceCommand
+      ? removeVoiceCommand(newTranscript)
+      : newTranscript;
+
     setSectionTranscripts((prev) => ({
       ...prev,
-      [sectionId]: newTranscript,
+      [sectionId]: transcript,
     }));
+
+    if (voiceCommand && handledVoiceCommandSessionRef.current !== sessionId) {
+      handledVoiceCommandSessionRef.current = sessionId;
+      voiceCommandHandlerRef.current?.(voiceCommand, sectionId);
+    }
   }, []);
 
   const handleTranscriptionComplete = useCallback((sessionId) => {
@@ -75,11 +88,7 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
       pendingAudioRef.current = null;
       transcriptionInProgressRef.current = true;
       try {
-        await transcribeAudio(
-          pending.blob,
-          pending.sessionId,
-          pending.isFinal,
-        );
+        await transcribeAudio(pending.blob, pending.sessionId, pending.isFinal);
       } catch (err) {
         console.error("[SectionRecorder] MedASR update failed:", err);
       } finally {
@@ -115,6 +124,8 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
         .slice(2)}`;
       sectionSessionMapRef.current[sessionId] = sectionId;
       currentSessionRef.current = sessionId;
+      currentRecordingSectionRef.current = sectionId;
+      handledVoiceCommandSessionRef.current = null;
       setCurrentRecordingSection(sectionId);
       await startRecording(sessionId);
     } catch (err) {
@@ -122,20 +133,40 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
     }
   };
 
-  const handleStopRecording = async () => {
+  const handleStopRecording = async (
+    moveToNext = false,
+    sectionId = currentRecordingSectionRef.current,
+    fromVoiceCommand = false,
+  ) => {
     try {
       // Close the UI recording state immediately so stop only needs one press.
       setCurrentRecordingSection(null);
+      currentRecordingSectionRef.current = null;
 
       const blob = await stopRecording();
       if (!blob || blob.size === 0) {
         throw new Error("No audio was captured");
       }
+
+      if (fromVoiceCommand && moveToNext && sectionId) {
+        const sectionIndex = template.sections.findIndex(
+          (section) => section.id === sectionId,
+        );
+        const nextSection = template.sections[sectionIndex + 1];
+        if (nextSection) {
+          await handleStartRecording(nextSection.id);
+        }
+      }
     } catch (err) {
       console.error("Error stopping recording:", err);
       setError(`Failed to stop recording: ${err.message}`);
       setCurrentRecordingSection(null);
+      currentRecordingSectionRef.current = null;
     }
+  };
+
+  voiceCommandHandlerRef.current = (command, sectionId) => {
+    void handleStopRecording(command === "next", sectionId, true);
   };
 
   const handleEditTranscript = (sectionId, newText) => {
@@ -287,7 +318,7 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
                     className={`btn btn-small ${isCurrentlyRecording ? "btn-danger" : "btn-primary"}`}
                     onClick={
                       isCurrentlyRecording
-                        ? handleStopRecording
+                        ? () => handleStopRecording()
                         : () => handleStartRecording(section.id)
                     }
                     disabled={isRecording && !isCurrentlyRecording}

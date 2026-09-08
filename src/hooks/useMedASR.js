@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { normalizeTranscript } from "../utils/normalizeTranscript";
 
 const useMedASR = (onTranscriptionUpdate, onTranscriptionComplete) => {
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -23,13 +24,14 @@ const useMedASR = (onTranscriptionUpdate, onTranscriptionComplete) => {
           audioBuffer,
           sessionId,
         });
+        const normalizedResult = normalizeTranscript(result);
 
-        setTranscript(result);
-        onTranscriptionUpdate?.(result, sessionId);
+        setTranscript(normalizedResult);
+        onTranscriptionUpdate?.(normalizedResult, sessionId);
         if (isFinal) {
           onTranscriptionComplete?.(sessionId);
         }
-        return result;
+        return normalizedResult;
       } catch (err) {
         const errorMessage = `MedASR transcription failed: ${err.message}`;
         console.error(errorMessage, err);

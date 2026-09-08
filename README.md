@@ -79,15 +79,27 @@ MEDASR_PYTHON=python3.11 npm run dev
 
 The first transcription downloads the gated MedASR model. Later transcriptions run locally; CPU inference can take noticeably longer than the recording.
 
-## Development
+## Run Locally in Development Mode
 
-Run the app in development mode:
+From the project directory, install the JavaScript and Python dependencies once:
 
 ```bash
-npm run dev
+npm install --legacy-peer-deps
+python3.11 -m pip install -r requirements-medasr.txt
 ```
 
-This will:
+Set your Hugging Face read token in the same terminal, then start the app with
+Python 3.11:
+
+```bash
+export HF_TOKEN=your_hugging_face_read_token
+MEDASR_PYTHON=python3.11 npm run dev
+```
+
+The first transcription downloads the gated MedASR model. Later transcriptions
+run locally. Stop the development app with `Ctrl+C`.
+
+The development command will:
 
 1. Start the React development server on `http://localhost:3000`
 2. Open the Electron app window
@@ -157,11 +169,15 @@ This downloads the model into `resources/medasr-model/`. The directory is ignore
 
 #### 4. Create the DMG
 
+From the project directory, run the complete packaging command:
+
 ```bash
 npm run build
 ```
 
-This command verifies the prepared model, bundles the Python worker, FFmpeg, and model files, builds the React interface, and packages the Electron application. On a successful Apple Silicon build, the installer is created at:
+This command prepares the authorized model, bundles the Python worker and
+FFmpeg, builds the React interface, and creates the Electron DMG installer. On
+a successful Apple Silicon build, the installer is created at:
 
 ```text
 dist/Dictation Tool-<version>-arm64.dmg
