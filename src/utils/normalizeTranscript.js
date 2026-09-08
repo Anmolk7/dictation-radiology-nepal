@@ -23,7 +23,7 @@ const SPOKEN_PUNCTUATION = [
   [/\b(apostrophe)\b/gi, "'"],
 ];
 const VOICE_COMMAND_PATTERN =
-  /(?:[\s{(\x5B]*\b(?:stop|next)\b[\s{}().,!?:;"'\x5B\x5D]*)+$/i;
+  /(?:[\s{(\x5B]*\b(?:stop|next|delete)\b[\s{}().,!?:;"'\x5B\x5D]*)+$/i;
 
 export function normalizeTranscript(text) {
   if (!text) {
@@ -50,10 +50,67 @@ export function normalizeTranscript(text) {
 
 export function extractVoiceCommand(text) {
   const commandSuffix = text?.match(VOICE_COMMAND_PATTERN)?.[0];
-  const commands = commandSuffix?.match(/\b(stop|next)\b/gi);
+  const commands = commandSuffix?.match(/\b(stop|next|delete)\b/gi);
   return commands?.at(-1)?.toLowerCase() || null;
 }
 
 export function removeVoiceCommand(text) {
   return text?.replace(VOICE_COMMAND_PATTERN, "").trim() || "";
+}
+
+export function removeDeleteCommandWords(text) {
+  return (
+    text
+      ?.replace(/(?:\s*\{\s*)?\bdelete\b(?:\s*\})?/gi, " ")
+      .replace(/[ \t]{2,}/g, " ")
+      .trim() || ""
+  );
+}
+
+export function removeNextCommandWords(text) {
+  return (
+    text
+      ?.replace(/(?:\s*\{\s*)?\bnext\b(?:\s*\})?/gi, " ")
+      .replace(/[ \t]{2,}/g, " ")
+      .trim() || ""
+  );
+}
+
+export function removeLastSentence(text) {
+  const trimmedText = text?.trim() || "";
+  if (!trimmedText) {
+    return "";
+  }
+
+  const boundaries = [...trimmedText.matchAll(/[.!?](?:["')\]}]|\s|$)/g)];
+  if (boundaries.length === 0) {
+    return "";
+  }
+
+  const previousBoundary = boundaries.at(-2);
+  if (!previousBoundary) {
+    const onlyBoundary = boundaries[0];
+    if (onlyBoundary.index + onlyBoundary[0].length < trimmedText.length) {
+      return trimmedText
+        .slice(0, onlyBoundary.index + onlyBoundary[0].trimEnd().length)
+        .trim();
+    }
+    return "";
+  }
+
+  return trimmedText
+    .slice(0, previousBoundary.index + previousBoundary[0].trimEnd().length)
+    .trim();
+}
+
+export function applyTranscriptDeletions(text, deletions) {
+  const edit = [...deletions]
+    .reverse()
+    .find((candidate) => text.startsWith(candidate.source));
+
+  if (!edit) {
+    return text;
+  }
+
+  return `${edit.replacement}${text.slice(edit.source.length)}`;
 }

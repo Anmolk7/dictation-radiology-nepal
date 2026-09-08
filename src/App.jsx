@@ -12,6 +12,7 @@ import PlayerPreview from "./components/PlayerPreview.jsx";
 import TemplateBuilder from "./pages/TemplateBuilder.jsx";
 import TemplateManager from "./pages/TemplateManager.jsx";
 import SectionRecorder from "./components/SectionRecorder.jsx";
+import { createFreeFormTemplate } from "./utils/templateUtils";
 import "./App.css";
 
 // Home Page Component
@@ -155,9 +156,7 @@ function RecordingPage({
       setSavedMessage("");
 
       const finalTranscript =
-        accumulatedTranscript ||
-        transcript ||
-        "No transcription available";
+        accumulatedTranscript || transcript || "No transcription available";
 
       if (!patientId.trim()) {
         setSavedMessage("Error: Patient ID is required");
@@ -210,17 +209,23 @@ function RecordingPage({
       return;
     }
 
-    if (!selectedTemplate) {
-      setFormError("Please select a dictation template to continue");
-      return;
-    }
+    const template = selectedTemplate || createFreeFormTemplate();
 
     setWorkflowData({
       patientId,
-      selectedTemplate,
+      selectedTemplate: template,
     });
+    if (!selectedTemplate) {
+      onTemplateChange(template);
+    }
     setWorkflowState("section-recording");
-  }, [patientId, selectedTemplate, setWorkflowData, setWorkflowState]);
+  }, [
+    patientId,
+    selectedTemplate,
+    setWorkflowData,
+    setWorkflowState,
+    onTemplateChange,
+  ]);
 
   const handleStartRecording = useCallback(async () => {
     setAccumulatedTranscript("");

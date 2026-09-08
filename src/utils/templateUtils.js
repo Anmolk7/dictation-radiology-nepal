@@ -117,6 +117,14 @@ export const createSection = (prompt, description = "", type = "text") => {
   };
 };
 
+export const createFreeFormTemplate = () => ({
+  id: "free-form-dictation",
+  name: "Free-form Dictation",
+  description: "Free-form dictation",
+  isFreeForm: true,
+  sections: [createSection("Report", "")],
+});
+
 /**
  * Serialize template to JSON string
  * @param {Object} template - Template object

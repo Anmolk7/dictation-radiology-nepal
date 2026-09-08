@@ -145,12 +145,15 @@
 
 .section-transcript textarea {
   width: 100%;
+  min-height: 120px;
+  max-height: 240px;
   padding: 12px;
   border: 2px solid #e0e0e0;
   border-radius: 6px;
   font-family: inherit;
   font-size: 14px;
   line-height: 1.5;
+  overflow-y: scroll;
   resize: vertical;
   transition: border-color 0.3s;
   box-sizing: border-box;

@@ -74,9 +74,9 @@ const RecordingPanel = ({
           type="button"
           className="btn btn-primary"
           onClick={onTemplateSubmit}
-          disabled={!patientId.trim() || !selectedTemplate}
+          disabled={!patientId.trim()}
         >
-          Continue to Template
+          {selectedTemplate ? "Continue to Template" : "Continue"}
         </button>
       </div>
 

@@ -3,12 +3,17 @@ import { generatePDF } from "../utils/pdfGenerator";
 import useAudioRecorder from "../hooks/useAudioRecorder";
 import useMedASR from "../hooks/useMedASR";
 import {
+  applyTranscriptDeletions,
   extractVoiceCommand,
+  removeDeleteCommandWords,
+  removeLastSentence,
+  removeNextCommandWords,
   removeVoiceCommand,
 } from "../utils/normalizeTranscript";
 import "./SectionRecorder.css";
 
 const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
+  const isFreeForm = template.isFreeForm === true;
   const [sectionTranscripts, setSectionTranscripts] = useState(
     template.sections.reduce((acc, section) => {
       acc[section.id] = section.description || "";
@@ -22,37 +27,104 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
   const sectionSessionMapRef = React.useRef({});
   const currentSessionRef = React.useRef(null);
   const currentRecordingSectionRef = React.useRef(null);
-  const handledVoiceCommandSessionRef = React.useRef(null);
+  const transcriptDeletionsBySessionRef = React.useRef({});
+  const lastDeleteSourceBySessionRef = React.useRef({});
+  const lastNextSourceBySessionRef = React.useRef({});
+  const deleteCommandExecutedBySessionRef = React.useRef({});
+  const nextCommandExecutedBySessionRef = React.useRef({});
   const voiceCommandHandlerRef = React.useRef(null);
+  const transcriptTextareaRefs = React.useRef({});
 
   const { isRecording, recordingTime, startRecording, stopRecording } =
     useAudioRecorder();
 
-  const handleStreamingUpdate = useCallback((newTranscript, sessionId) => {
-    if (!sessionId || sessionId !== currentSessionRef.current) {
+  useEffect(() => {
+    if (!currentRecordingSection) {
       return;
     }
 
-    const sectionId = sectionSessionMapRef.current[sessionId];
-    if (!sectionId) {
-      return;
+    const textarea = transcriptTextareaRefs.current[currentRecordingSection];
+    if (textarea) {
+      textarea.scrollTop = textarea.scrollHeight;
     }
+  }, [currentRecordingSection, sectionTranscripts]);
 
-    const voiceCommand = extractVoiceCommand(newTranscript);
-    const transcript = voiceCommand
-      ? removeVoiceCommand(newTranscript)
-      : newTranscript;
+  const handleStreamingUpdate = useCallback(
+    (newTranscript, sessionId) => {
+      if (!sessionId || sessionId !== currentSessionRef.current) {
+        return;
+      }
 
-    setSectionTranscripts((prev) => ({
-      ...prev,
-      [sectionId]: transcript,
-    }));
+      const sectionId = sectionSessionMapRef.current[sessionId];
+      if (!sectionId) {
+        return;
+      }
 
-    if (voiceCommand && handledVoiceCommandSessionRef.current !== sessionId) {
-      handledVoiceCommandSessionRef.current = sessionId;
-      voiceCommandHandlerRef.current?.(voiceCommand, sectionId);
-    }
-  }, []);
+      const voiceCommand = extractVoiceCommand(newTranscript);
+      let commandFreeTranscript = voiceCommand
+        ? removeVoiceCommand(newTranscript)
+        : newTranscript;
+
+      if (deleteCommandExecutedBySessionRef.current[sessionId]) {
+        commandFreeTranscript = removeDeleteCommandWords(commandFreeTranscript);
+      }
+
+      if (isFreeForm && nextCommandExecutedBySessionRef.current[sessionId]) {
+        commandFreeTranscript = removeNextCommandWords(commandFreeTranscript);
+      }
+
+      if (voiceCommand === "delete") {
+        deleteCommandExecutedBySessionRef.current[sessionId] = true;
+        const lastDeleteSource =
+          lastDeleteSourceBySessionRef.current[sessionId];
+        if (lastDeleteSource !== commandFreeTranscript) {
+          const deletions = transcriptDeletionsBySessionRef.current[sessionId];
+          const currentTranscript = applyTranscriptDeletions(
+            commandFreeTranscript,
+            deletions,
+          );
+          deletions.push({
+            source: commandFreeTranscript,
+            replacement: removeLastSentence(currentTranscript),
+          });
+          lastDeleteSourceBySessionRef.current[sessionId] =
+            commandFreeTranscript;
+        }
+      }
+
+      if (isFreeForm && voiceCommand === "next") {
+        const lastNextSource = lastNextSourceBySessionRef.current[sessionId];
+        if (lastNextSource !== commandFreeTranscript) {
+          const edits = transcriptDeletionsBySessionRef.current[sessionId];
+          const currentTranscript = applyTranscriptDeletions(
+            commandFreeTranscript,
+            edits,
+          );
+          edits.push({
+            source: commandFreeTranscript,
+            replacement: `${currentTranscript}\n`,
+          });
+          lastNextSourceBySessionRef.current[sessionId] = commandFreeTranscript;
+        }
+        nextCommandExecutedBySessionRef.current[sessionId] = true;
+      }
+
+      const transcript = applyTranscriptDeletions(
+        commandFreeTranscript,
+        transcriptDeletionsBySessionRef.current[sessionId] || [],
+      );
+
+      setSectionTranscripts((prev) => ({
+        ...prev,
+        [sectionId]: transcript,
+      }));
+
+      if (voiceCommand === "stop" || (voiceCommand === "next" && !isFreeForm)) {
+        voiceCommandHandlerRef.current?.(voiceCommand, sectionId);
+      }
+    },
+    [isFreeForm],
+  );
 
   const handleTranscriptionComplete = useCallback((sessionId) => {
     const currentSession = currentSessionRef.current;
@@ -70,6 +142,10 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
 
     if (sessionId) {
       delete sectionSessionMapRef.current[sessionId];
+      delete transcriptDeletionsBySessionRef.current[sessionId];
+      delete lastDeleteSourceBySessionRef.current[sessionId];
+      delete lastNextSourceBySessionRef.current[sessionId];
+      delete deleteCommandExecutedBySessionRef.current[sessionId];
     }
   }, []);
 
@@ -125,7 +201,11 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
       sectionSessionMapRef.current[sessionId] = sectionId;
       currentSessionRef.current = sessionId;
       currentRecordingSectionRef.current = sectionId;
-      handledVoiceCommandSessionRef.current = null;
+      transcriptDeletionsBySessionRef.current[sessionId] = [];
+      lastDeleteSourceBySessionRef.current[sessionId] = null;
+      lastNextSourceBySessionRef.current[sessionId] = null;
+      deleteCommandExecutedBySessionRef.current[sessionId] = false;
+      nextCommandExecutedBySessionRef.current[sessionId] = false;
       setCurrentRecordingSection(sectionId);
       await startRecording(sessionId);
     } catch (err) {
@@ -142,6 +222,8 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
       // Close the UI recording state immediately so stop only needs one press.
       setCurrentRecordingSection(null);
       currentRecordingSectionRef.current = null;
+      const stoppingSessionId = currentSessionRef.current;
+      currentSessionRef.current = null;
 
       const blob = await stopRecording();
       if (!blob || blob.size === 0) {
@@ -157,6 +239,15 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
           await handleStartRecording(nextSection.id);
         }
       }
+
+      if (stoppingSessionId) {
+        delete sectionSessionMapRef.current[stoppingSessionId];
+        delete transcriptDeletionsBySessionRef.current[stoppingSessionId];
+        delete lastDeleteSourceBySessionRef.current[stoppingSessionId];
+        delete lastNextSourceBySessionRef.current[stoppingSessionId];
+        delete deleteCommandExecutedBySessionRef.current[stoppingSessionId];
+        delete nextCommandExecutedBySessionRef.current[stoppingSessionId];
+      }
     } catch (err) {
       console.error("Error stopping recording:", err);
       setError(`Failed to stop recording: ${err.message}`);
@@ -166,7 +257,9 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
   };
 
   voiceCommandHandlerRef.current = (command, sectionId) => {
-    void handleStopRecording(command === "next", sectionId, true);
+    if (command === "stop" || (!isFreeForm && command === "next")) {
+      void handleStopRecording(command === "next", sectionId, true);
+    }
   };
 
   const handleEditTranscript = (sectionId, newText) => {
@@ -254,8 +347,16 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
   return (
     <div className="section-recorder">
       <div className="recorder-header">
-        <h2>🎙️ Section-by-Section Recording</h2>
-        <p>Record each section individually for precise dictation</p>
+        <h2>
+          {isFreeForm
+            ? "🎙️ Free-form Dictation"
+            : "🎙️ Section-by-Section Recording"}
+        </h2>
+        <p>
+          {isFreeForm
+            ? "Record your dictation continuously"
+            : "Record each section individually for precise dictation"}
+        </p>
       </div>
 
       {error && (
@@ -283,14 +384,18 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
             <span className="label">Patient ID:</span>
             <span className="value">{patientId}</span>
           </div>
-          <div className="summary-row">
-            <span className="label">Template:</span>
-            <span className="value">{template.name}</span>
-          </div>
-          <div className="summary-row">
-            <span className="label">Sections:</span>
-            <span className="value">{template.sections.length}</span>
-          </div>
+          {!isFreeForm && (
+            <>
+              <div className="summary-row">
+                <span className="label">Template:</span>
+                <span className="value">{template.name}</span>
+              </div>
+              <div className="summary-row">
+                <span className="label">Sections:</span>
+                <span className="value">{template.sections.length}</span>
+              </div>
+            </>
+          )}
           <div className="summary-row">
             <span className="label">Total Words:</span>
             <span className="value">{getTotalWords()}</span>
@@ -312,7 +417,7 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
           return (
             <div key={section.id} className="section-recording-card">
               <div className="section-header">
-                <h4>Section {index + 1}</h4>
+                {!isFreeForm && <h4>Section {index + 1}</h4>}
                 <div className="section-controls">
                   <button
                     className={`btn btn-small ${isCurrentlyRecording ? "btn-danger" : "btn-primary"}`}
@@ -338,6 +443,9 @@ const SectionRecorder = ({ patientId, template, onSave, onBack }) => {
               <div className="section-transcript">
                 <label>Transcript:</label>
                 <textarea
+                  ref={(element) => {
+                    transcriptTextareaRefs.current[section.id] = element;
+                  }}
                   value={transcript}
                   onChange={(e) =>
                     handleEditTranscript(section.id, e.target.value)
